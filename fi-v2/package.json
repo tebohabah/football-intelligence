@@ -1,8 +1,0 @@
-{
-  "name": "football-intelligence",
-  "private": true,
-  "version": "2.1.0",
-  "type": "module",
-  "scripts": {"dev":"wrangler dev","deploy":"wrangler deploy"},
-  "devDependencies": {"wrangler":"^4.44.0"}
-}
