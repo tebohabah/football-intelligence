@@ -8,7 +8,7 @@ function poisson(k, l) {
 }
 
 /* =========================================================
-   DEMO DATA
+   DEMO FIXTURES
    ========================================================= */
 
 const demoFixtures = [
@@ -109,9 +109,14 @@ const demoFixtures = [
    ========================================================= */
 
 function predict(f) {
-  const ratingEdge = (f.homeRating - f.awayRating) / 20;
-  const formEdge = f.homeForm - f.awayForm;
-  const attackEdge = f.homeXg - f.awayXg;
+  const ratingEdge =
+    (f.homeRating - f.awayRating) / 20;
+
+  const formEdge =
+    f.homeForm - f.awayForm;
+
+  const attackEdge =
+    f.homeXg - f.awayXg;
 
   const raw =
     0.95 * ratingEdge +
@@ -133,7 +138,8 @@ function predict(f) {
     0.72
   );
 
-  const total = h0 + draw0 + a0;
+  const total =
+    h0 + draw0 + a0;
 
   const probabilities = {
     home: h0 / total,
@@ -141,19 +147,26 @@ function predict(f) {
     away: a0 / total
   };
 
-  const expectedHomeGoals = Math.max(
-    0.2,
-    f.homeXg *
-      (1 + 0.08 * ratingEdge + 0.05 * formEdge)
-  );
+  const expectedHomeGoals =
+    Math.max(
+      0.2,
+      f.homeXg *
+        (1 +
+          0.08 * ratingEdge +
+          0.05 * formEdge)
+    );
 
-  const expectedAwayGoals = Math.max(
-    0.2,
-    f.awayXg *
-      (1 - 0.06 * ratingEdge - 0.03 * formEdge)
-  );
+  const expectedAwayGoals =
+    Math.max(
+      0.2,
+      f.awayXg *
+        (1 -
+          0.06 * ratingEdge -
+          0.03 * formEdge)
+    );
 
   let scores = [];
+
   let over15 = 0;
   let over25 = 0;
   let over35 = 0;
@@ -165,22 +178,39 @@ function predict(f) {
         poisson(h, expectedHomeGoals) *
         poisson(a, expectedAwayGoals);
 
-      scores.push({ h, a, p });
+      scores.push({
+        h,
+        a,
+        p
+      });
 
-      if (h + a >= 2) over15 += p;
-      if (h + a >= 3) over25 += p;
-      if (h + a >= 4) over35 += p;
-      if (h > 0 && a > 0) btts += p;
+      if (h + a >= 2) {
+        over15 += p;
+      }
+
+      if (h + a >= 3) {
+        over25 += p;
+      }
+
+      if (h + a >= 4) {
+        over35 += p;
+      }
+
+      if (h > 0 && a > 0) {
+        btts += p;
+      }
     }
   }
 
-  scores.sort((x, y) => y.p - x.p);
+  scores.sort(
+    (x, y) => y.p - x.p
+  );
 
   const markets = {
     over05:
       1 -
       poisson(0, expectedHomeGoals) *
-        poisson(0, expectedAwayGoals),
+      poisson(0, expectedAwayGoals),
 
     under05:
       poisson(0, expectedHomeGoals) *
@@ -203,7 +233,9 @@ function predict(f) {
     ["Home Win", probabilities.home],
     ["Draw", probabilities.draw],
     ["Away Win", probabilities.away]
-  ].sort((a, b) => b[1] - a[1])[0];
+  ].sort(
+    (a, b) => b[1] - a[1]
+  )[0];
 
   const confidence = Math.round(
     clamp(
@@ -211,21 +243,22 @@ function predict(f) {
         Math.abs(verdict[1] - 0.5) * 72 +
         Math.abs(
           probabilities.home -
-            probabilities.away
-        ) *
-          28,
+          probabilities.away
+        ) * 28,
       0,
       97
     )
   );
 
-  const modelAgreement = Math.round(
-    clamp(
-      68 + confidence * 0.25,
-      0,
-      95
-    )
-  );
+  const modelAgreement =
+    Math.round(
+      clamp(
+        68 +
+          confidence * 0.25,
+        0,
+        95
+      )
+    );
 
   const factors = [
     {
@@ -276,19 +309,36 @@ function predict(f) {
   ];
 
   const bestMarkets = [
-    ["Home Win", probabilities.home],
-    ["Away Win", probabilities.away],
-    ["Draw", probabilities.draw],
-    ["Over 2.5", markets.over25],
-    ["BTTS Yes", markets.btts]
+    [
+      "Home Win",
+      probabilities.home
+    ],
+    [
+      "Away Win",
+      probabilities.away
+    ],
+    [
+      "Draw",
+      probabilities.draw
+    ],
+    [
+      "Over 2.5",
+      over25
+    ],
+    [
+      "BTTS Yes",
+      btts
+    ]
   ]
-    .sort((a, b) => b[1] - a[1])
+    .sort(
+      (a, b) => b[1] - a[1]
+    )
     .slice(0, 3);
 
   return {
     ...f,
 
-    verdict,
+    verdict: verdict[0],
 
     probabilities,
 
@@ -327,19 +377,29 @@ function predict(f) {
    RESPONSE HELPERS
    ========================================================= */
 
-function json(data, status = 200) {
-  return Response.json(data, {
-    status,
-    headers: {
-      "cache-control": "no-store"
+function json(
+  data,
+  status = 200
+) {
+  return Response.json(
+    data,
+    {
+      status,
+      headers: {
+        "cache-control":
+          "no-store"
+      }
     }
-  });
+  );
 }
 
-function todayISO(offset = 0) {
+function todayISO(
+  offset = 0
+) {
   const d = new Date(
     Date.now() +
-      offset * 86400000
+      offset *
+        86400000
   );
 
   return d
@@ -351,6 +411,7 @@ function apiHeaders(env) {
   return {
     "x-apisports-key":
       env.API_FOOTBALL_KEY,
+
     Accept:
       "application/json"
   };
@@ -364,10 +425,11 @@ async function fetchProvider(
   url,
   env
 ) {
-  const r = await fetch(url, {
-    headers:
-      apiHeaders(env)
-  });
+  const r =
+    await fetch(url, {
+      headers:
+        apiHeaders(env)
+    });
 
   if (!r.ok) {
     throw new Error(
@@ -375,14 +437,19 @@ async function fetchProvider(
     );
   }
 
-  const d = await r.json();
+  const d =
+    await r.json();
 
   if (
     d.errors &&
-    Object.keys(d.errors).length
+    Object.keys(
+      d.errors
+    ).length
   ) {
     throw new Error(
-      JSON.stringify(d.errors)
+      JSON.stringify(
+        d.errors
+      )
     );
   }
 
@@ -400,21 +467,23 @@ function normalizeFixture(x) {
     ),
 
     leagueId:
-      x.league?.id ?? null,
+      x.league?.id ??
+      null,
 
     league:
       x.league?.name ??
       "Unknown",
 
     country:
-      x.league?.country ?? "",
+      x.league?.country ??
+      "",
 
     kickoffUtc:
       x.fixture?.date,
 
     status:
-      x.fixture?.status?.short ??
-      "NS",
+      x.fixture?.status
+        ?.short ?? "NS",
 
     homeId:
       x.teams?.home?.id ??
@@ -433,10 +502,12 @@ function normalizeFixture(x) {
       "Away",
 
     homeGoals:
-      x.goals?.home ?? null,
+      x.goals?.home ??
+      null,
 
     awayGoals:
-      x.goals?.away ?? null,
+      x.goals?.away ??
+      null,
 
     logoHome:
       x.teams?.home?.logo ??
@@ -454,16 +525,21 @@ function normalizeFixture(x) {
 
 function liveBaselinePrediction(f) {
   const kickoff =
-    new Date(f.kickoffUtc);
+    new Date(
+      f.kickoffUtc
+    );
 
   const base = {
     id: f.id,
 
-    league: f.league,
+    league:
+      f.league,
 
-    country: f.country,
+    country:
+      f.country,
 
-    leagueId: f.leagueId,
+    leagueId:
+      f.leagueId,
 
     kickoff:
       kickoff.toLocaleTimeString(
@@ -476,20 +552,19 @@ function liveBaselinePrediction(f) {
         }
       ),
 
-    home: f.home,
+    home:
+      f.home,
 
-    away: f.away,
+    away:
+      f.away,
 
     homeRating: 75,
-
     awayRating: 75,
 
     homeForm: 0.5,
-
     awayForm: 0.5,
 
     homeXg: 1.45,
-
     awayXg: 1.15
   };
 
@@ -533,7 +608,8 @@ async function upsertFixtures(
   if (!db) return;
 
   const now =
-    new Date().toISOString();
+    new Date()
+      .toISOString();
 
   const stmts =
     items.map(f =>
@@ -612,7 +688,9 @@ async function upsertFixtures(
    ========================================================= */
 
 async function sync(env) {
-  if (!env.API_FOOTBALL_KEY) {
+  if (
+    !env.API_FOOTBALL_KEY
+  ) {
     return {
       mode: "demo",
       reason:
@@ -684,7 +762,7 @@ async function sync(env) {
 }
 
 /* =========================================================
-   DATE UTILITIES
+   DATE RANGE
    ========================================================= */
 
 function dateRange(date) {
@@ -716,24 +794,26 @@ async function readFixtures(
   filters = {}
 ) {
   if (env.DB) {
+    const date =
+      filters.date ||
+      todayISO();
+
+    const range =
+      dateRange(date);
+
     const conditions = [
       `kickoff_utc>=?`,
       `kickoff_utc<?`
     ];
 
     const params = [
-      new Date(
-        todayISO()
-      ).toISOString(),
-
-      new Date(
-        todayISO(2)
-      ).toISOString()
+      range.start,
+      range.end
     ];
 
     if (filters.country) {
       conditions.push(
-        `country=?`
+        `LOWER(country)=LOWER(?)`
       );
 
       params.push(
@@ -755,7 +835,7 @@ async function readFixtures(
 
     if (filters.league) {
       conditions.push(
-        `league_name=?`
+        `LOWER(league_name)=LOWER(?)`
       );
 
       params.push(
@@ -786,32 +866,36 @@ async function readFixtures(
           )}
           ORDER BY kickoff_utc
         `)
-        .bind(...params)
+        .bind(
+          ...params
+        )
         .all();
 
-    if (r.results?.length) {
-      return r.results.map(
-        x => ({
-          ...x,
-          logos: {}
-        })
-      );
-    }
+    return (
+      r.results || []
+    ).map(x => ({
+      ...x,
+      logos: {}
+    }));
   }
 
   let demo =
     demoFixtures;
 
-  if (filters.country) {
+  if (
+    filters.country
+  ) {
     demo =
       demo.filter(
         x =>
-          x.country ===
-          filters.country
+          x.country.toLowerCase() ===
+          filters.country.toLowerCase()
       );
   }
 
-  if (filters.leagueId) {
+  if (
+    filters.leagueId
+  ) {
     demo =
       demo.filter(
         x =>
@@ -824,12 +908,14 @@ async function readFixtures(
       );
   }
 
-  if (filters.league) {
+  if (
+    filters.league
+  ) {
     demo =
       demo.filter(
         x =>
-          x.league ===
-          filters.league
+          x.league.toLowerCase() ===
+          filters.league.toLowerCase()
       );
   }
 
@@ -837,7 +923,7 @@ async function readFixtures(
 }
 
 /* =========================================================
-   COUNTRY LIST
+   COUNTRIES
    ========================================================= */
 
 async function readCountries(
@@ -872,7 +958,7 @@ async function readCountries(
 }
 
 /* =========================================================
-   LEAGUE LIST
+   LEAGUES BY COUNTRY
    ========================================================= */
 
 async function readLeagues(
@@ -886,8 +972,7 @@ async function readLeagues(
           .filter(
             f =>
               !country ||
-              f.country
-                .toLowerCase() ===
+              f.country.toLowerCase() ===
                 country.toLowerCase()
           )
           .map(f => [
@@ -899,8 +984,7 @@ async function readLeagues(
                 f.league,
               country:
                 f.country,
-              fixtureCount:
-                1
+              fixtureCount: 1
             }
           ])
       ).values()
@@ -917,7 +1001,7 @@ async function readLeagues(
             country,
             COUNT(*) fixtureCount
           FROM fixtures
-          WHERE country=?
+          WHERE LOWER(country)=LOWER(?)
             AND league_name IS NOT NULL
             AND league_name!=''
           GROUP BY
@@ -1074,7 +1158,7 @@ export default {
       }
 
       /* -------------------------
-         LEAGUES BY COUNTRY
+         LEAGUES
          ------------------------- */
 
       if (
@@ -1117,6 +1201,11 @@ export default {
         "/api/fixtures"
       ) {
         const filters = {
+          date:
+            url.searchParams.get(
+              "date"
+            ) || todayISO(),
+
           country:
             url.searchParams.get(
               "country"
@@ -1139,7 +1228,9 @@ export default {
             filters
           );
 
-        if (rows.length) {
+        if (
+          rows.length
+        ) {
           return json({
             mode: "live",
 
@@ -1174,8 +1265,8 @@ export default {
               .filter(
                 f =>
                   !filters.country ||
-                  f.country ===
-                    filters.country
+                  f.country.toLowerCase() ===
+                    filters.country.toLowerCase()
               )
               .filter(
                 f =>
@@ -1190,12 +1281,10 @@ export default {
               .filter(
                 f =>
                   !filters.league ||
-                  f.league ===
-                    filters.league
+                  f.league.toLowerCase() ===
+                    filters.league.toLowerCase()
               )
-              .map(
-                predict
-              )
+              .map(predict)
         });
       }
 
@@ -1215,7 +1304,11 @@ export default {
 
         const rows =
           await readFixtures(
-            env
+            env,
+            {
+              date:
+                todayISO()
+            }
           );
 
         const f =
@@ -1245,8 +1338,11 @@ export default {
         return demo
           ? json({
               mode: "demo",
+
               match:
-                predict(demo)
+                predict(
+                  demo
+                )
             })
           : json(
               {
@@ -1258,7 +1354,7 @@ export default {
       }
 
       /* -------------------------
-         FRONTEND ASSETS
+         STATIC FRONTEND
          ------------------------- */
 
       if (env.ASSETS) {
@@ -1292,7 +1388,7 @@ export default {
   },
 
   /* =======================================================
-     CRON
+     SCHEDULED SYNCHRONIZATION
      ======================================================= */
 
   async scheduled(
