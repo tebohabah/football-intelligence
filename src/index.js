@@ -143,12 +143,14 @@ function predict(f) {
 
   const expectedHomeGoals = Math.max(
     0.2,
-    f.homeXg * (1 + 0.08 * ratingEdge + 0.05 * formEdge)
+    f.homeXg *
+      (1 + 0.08 * ratingEdge + 0.05 * formEdge)
   );
 
   const expectedAwayGoals = Math.max(
     0.2,
-    f.awayXg * (1 - 0.06 * ratingEdge - 0.03 * formEdge)
+    f.awayXg *
+      (1 - 0.06 * ratingEdge - 0.03 * formEdge)
   );
 
   let scores = [];
@@ -175,8 +177,14 @@ function predict(f) {
   scores.sort((x, y) => y.p - x.p);
 
   const markets = {
-    over05: 1 - poisson(0, expectedHomeGoals) * poisson(0, expectedAwayGoals),
-    under05: poisson(0, expectedHomeGoals) * poisson(0, expectedAwayGoals),
+    over05:
+      1 -
+      poisson(0, expectedHomeGoals) *
+        poisson(0, expectedAwayGoals),
+
+    under05:
+      poisson(0, expectedHomeGoals) *
+      poisson(0, expectedAwayGoals),
 
     over15,
     under15: 1 - over15,
@@ -201,48 +209,69 @@ function predict(f) {
     clamp(
       52 +
         Math.abs(verdict[1] - 0.5) * 72 +
-        Math.abs(probabilities.home - probabilities.away) * 28,
+        Math.abs(
+          probabilities.home -
+            probabilities.away
+        ) *
+          28,
       0,
       97
     )
   );
 
   const modelAgreement = Math.round(
-    clamp(68 + confidence * 0.25, 0, 95)
+    clamp(
+      68 + confidence * 0.25,
+      0,
+      95
+    )
   );
 
   const factors = [
     {
       label: "Team strength",
       value: clamp(
-        50 + (f.homeRating - f.awayRating) * 2,
+        50 +
+          (f.homeRating -
+            f.awayRating) *
+            2,
         0,
         100
       ),
-      note: "Relative team rating advantage in the current model."
+      note:
+        "Relative team rating advantage in the current model."
     },
     {
       label: "Recent form",
       value: clamp(
-        50 + (f.homeForm - f.awayForm) * 100,
+        50 +
+          (f.homeForm -
+            f.awayForm) *
+            100,
         0,
         100
       ),
-      note: "Recent performance signal, normalized for comparison."
+      note:
+        "Recent performance signal, normalized for comparison."
     },
     {
       label: "Expected goals",
       value: clamp(
-        50 + (f.homeXg - f.awayXg) * 28,
+        50 +
+          (f.homeXg -
+            f.awayXg) *
+            28,
         0,
         100
       ),
-      note: "Pre-match attacking expectation differential."
+      note:
+        "Pre-match attacking expectation differential."
     },
     {
       label: "Home advantage",
       value: 68,
-      note: "Venue effect currently applied as a modest prior."
+      note:
+        "Venue effect currently applied as a modest prior."
     }
   ];
 
@@ -266,12 +295,15 @@ function predict(f) {
     expectedGoals: {
       home: expectedHomeGoals,
       away: expectedAwayGoals,
-      total: expectedHomeGoals + expectedAwayGoals
+      total:
+        expectedHomeGoals +
+        expectedAwayGoals
     },
 
     markets,
 
-    topScores: scores.slice(0, 6),
+    topScores:
+      scores.slice(0, 6),
 
     confidence,
 
@@ -283,9 +315,11 @@ function predict(f) {
 
     factors,
 
-    generatedAt: new Date().toISOString(),
+    generatedAt:
+      new Date().toISOString(),
 
-    modelVersion: "FI-INTELLIGENCE-3.0"
+    modelVersion:
+      "FI-INTELLIGENCE-3.0"
   };
 }
 
@@ -304,16 +338,21 @@ function json(data, status = 200) {
 
 function todayISO(offset = 0) {
   const d = new Date(
-    Date.now() + offset * 86400000
+    Date.now() +
+      offset * 86400000
   );
 
-  return d.toISOString().slice(0, 10);
+  return d
+    .toISOString()
+    .slice(0, 10);
 }
 
 function apiHeaders(env) {
   return {
-    "x-apisports-key": env.API_FOOTBALL_KEY,
-    Accept: "application/json"
+    "x-apisports-key":
+      env.API_FOOTBALL_KEY,
+    Accept:
+      "application/json"
   };
 }
 
@@ -321,13 +360,19 @@ function apiHeaders(env) {
    API-FOOTBALL
    ========================================================= */
 
-async function fetchProvider(url, env) {
+async function fetchProvider(
+  url,
+  env
+) {
   const r = await fetch(url, {
-    headers: apiHeaders(env)
+    headers:
+      apiHeaders(env)
   });
 
   if (!r.ok) {
-    throw new Error(`API-Football HTTP ${r.status}`);
+    throw new Error(
+      `API-Football HTTP ${r.status}`
+    );
   }
 
   const d = await r.json();
@@ -350,12 +395,16 @@ async function fetchProvider(url, env) {
 
 function normalizeFixture(x) {
   return {
-    id: String(x.fixture?.id),
+    id: String(
+      x.fixture?.id
+    ),
 
-    leagueId: x.league?.id ?? null,
+    leagueId:
+      x.league?.id ?? null,
 
     league:
-      x.league?.name ?? "Unknown",
+      x.league?.name ??
+      "Unknown",
 
     country:
       x.league?.country ?? "",
@@ -364,19 +413,24 @@ function normalizeFixture(x) {
       x.fixture?.date,
 
     status:
-      x.fixture?.status?.short ?? "NS",
+      x.fixture?.status?.short ??
+      "NS",
 
     homeId:
-      x.teams?.home?.id ?? null,
+      x.teams?.home?.id ??
+      null,
 
     home:
-      x.teams?.home?.name ?? "Home",
+      x.teams?.home?.name ??
+      "Home",
 
     awayId:
-      x.teams?.away?.id ?? null,
+      x.teams?.away?.id ??
+      null,
 
     away:
-      x.teams?.away?.name ?? "Away",
+      x.teams?.away?.name ??
+      "Away",
 
     homeGoals:
       x.goals?.home ?? null,
@@ -385,10 +439,12 @@ function normalizeFixture(x) {
       x.goals?.away ?? null,
 
     logoHome:
-      x.teams?.home?.logo ?? null,
+      x.teams?.home?.logo ??
+      null,
 
     logoAway:
-      x.teams?.away?.logo ?? null
+      x.teams?.away?.logo ??
+      null
   };
 }
 
@@ -397,7 +453,8 @@ function normalizeFixture(x) {
    ========================================================= */
 
 function liveBaselinePrediction(f) {
-  const kickoff = new Date(f.kickoffUtc);
+  const kickoff =
+    new Date(f.kickoffUtc);
 
   const base = {
     id: f.id,
@@ -408,14 +465,16 @@ function liveBaselinePrediction(f) {
 
     leagueId: f.leagueId,
 
-    kickoff: kickoff.toLocaleTimeString(
-      "en-GB",
-      {
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone: "Africa/Lagos"
-      }
-    ),
+    kickoff:
+      kickoff.toLocaleTimeString(
+        "en-GB",
+        {
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone:
+            "Africa/Lagos"
+        }
+      ),
 
     home: f.home,
 
@@ -434,21 +493,26 @@ function liveBaselinePrediction(f) {
     awayXg: 1.15
   };
 
-  const p = predict(base);
+  const p =
+    predict(base);
 
   return {
     ...p,
 
-    providerFixtureId: f.id,
+    providerFixtureId:
+      f.id,
 
-    providerStatus: f.status,
+    providerStatus:
+      f.status,
 
     providerKickoffUtc:
       f.kickoffUtc,
 
     logos: {
-      home: f.logoHome,
-      away: f.logoAway
+      home:
+        f.logoHome,
+      away:
+        f.logoAway
     },
 
     dataQuality: 40,
@@ -462,68 +526,72 @@ function liveBaselinePrediction(f) {
    DATABASE
    ========================================================= */
 
-async function upsertFixtures(db, items) {
+async function upsertFixtures(
+  db,
+  items
+) {
   if (!db) return;
 
   const now =
     new Date().toISOString();
 
-  const stmts = items.map(f =>
-    db
-      .prepare(`
-        INSERT INTO fixtures(
-          id,
-          league_id,
-          league_name,
-          country,
-          kickoff_utc,
-          status,
-          home_team_id,
-          home_team,
-          away_team_id,
-          away_team,
-          home_goals,
-          away_goals,
-          raw_json,
-          updated_at
-        )
-        VALUES(
-          ?,?,?,?,?,?,?,?,?,?,?,?,?,?
-        )
+  const stmts =
+    items.map(f =>
+      db
+        .prepare(`
+          INSERT INTO fixtures(
+            id,
+            league_id,
+            league_name,
+            country,
+            kickoff_utc,
+            status,
+            home_team_id,
+            home_team,
+            away_team_id,
+            away_team,
+            home_goals,
+            away_goals,
+            raw_json,
+            updated_at
+          )
+          VALUES(
+            ?,?,?,?,?,?,?,?,?,?,?,?,?,?
+          )
 
-        ON CONFLICT(id)
-        DO UPDATE SET
-          league_id=excluded.league_id,
-          league_name=excluded.league_name,
-          country=excluded.country,
-          kickoff_utc=excluded.kickoff_utc,
-          status=excluded.status,
-          home_team_id=excluded.home_team_id,
-          home_team=excluded.home_team,
-          away_team_id=excluded.away_team_id,
-          away_team=excluded.away_team,
-          home_goals=excluded.home_goals,
-          away_goals=excluded.away_goals,
-          raw_json=excluded.raw_json,
-          updated_at=excluded.updated_at
-      `)
-      .bind(
-        f.id,
-        f.leagueId,
-        f.league,
-        f.country,
-        f.kickoffUtc,
-        f.status,
-        f.homeId,
-        f.home,
-        f.awayId,
-        f.away,
-        f.homeGoals,
-        f.awayGoals,
-        JSON.stringify(f),
-        now
-      )
-  );
+          ON CONFLICT(id)
+          DO UPDATE SET
+            league_id=excluded.league_id,
+            league_name=excluded.league_name,
+            country=excluded.country,
+            kickoff_utc=excluded.kickoff_utc,
+            status=excluded.status,
+            home_team_id=excluded.home_team_id,
+            home_team=excluded.home_team,
+            away_team_id=excluded.away_team_id,
+            away_team=excluded.away_team,
+            home_goals=excluded.home_goals,
+            away_goals=excluded.away_goals,
+            raw_json=excluded.raw_json,
+            updated_at=excluded.updated_at
+        `)
+        .bind(
+          f.id,
+          f.leagueId,
+          f.league,
+          f.country,
+          f.kickoffUtc,
+          f.status,
+          f.homeId,
+          f.home,
+          f.awayId,
+          f.away,
+          f.homeGoals,
+          f.awayGoals,
+          JSON.stringify(f),
+          now
+        )
+    );
 
   for (
     let i = 0;
@@ -531,7 +599,10 @@ async function upsertFixtures(db, items) {
     i += 20
   ) {
     await db.batch(
-      stmts.slice(i, i + 20)
+      stmts.slice(
+        i,
+        i + 20
+      )
     );
   }
 }
@@ -568,7 +639,9 @@ async function sync(env) {
   const items = [
     ...(a.response || []),
     ...(b.response || [])
-  ].map(normalizeFixture);
+  ].map(
+    normalizeFixture
+  );
 
   const unique = [
     ...new Map(
@@ -627,8 +700,10 @@ function dateRange(date) {
     );
 
   return {
-    start: start.toISOString(),
-    end: end.toISOString()
+    start:
+      start.toISOString(),
+    end:
+      end.toISOString()
   };
 }
 
@@ -638,90 +713,127 @@ function dateRange(date) {
 
 async function readFixtures(
   env,
-  options = {}
+  filters = {}
 ) {
-  if (!env.DB) {
-    return [];
+  if (env.DB) {
+    const conditions = [
+      `kickoff_utc>=?`,
+      `kickoff_utc<?`
+    ];
+
+    const params = [
+      new Date(
+        todayISO()
+      ).toISOString(),
+
+      new Date(
+        todayISO(2)
+      ).toISOString()
+    ];
+
+    if (filters.country) {
+      conditions.push(
+        `country=?`
+      );
+
+      params.push(
+        filters.country
+      );
+    }
+
+    if (filters.leagueId) {
+      conditions.push(
+        `league_id=?`
+      );
+
+      params.push(
+        Number(
+          filters.leagueId
+        )
+      );
+    }
+
+    if (filters.league) {
+      conditions.push(
+        `league_name=?`
+      );
+
+      params.push(
+        filters.league
+      );
+    }
+
+    const r =
+      await env.DB
+        .prepare(`
+          SELECT
+            id,
+            league_id leagueId,
+            league_name league,
+            country,
+            kickoff_utc kickoffUtc,
+            status,
+            home_team_id homeId,
+            home_team home,
+            away_team_id awayId,
+            away_team away,
+            home_goals homeGoals,
+            away_goals awayGoals,
+            raw_json rawJson
+          FROM fixtures
+          WHERE ${conditions.join(
+            " AND "
+          )}
+          ORDER BY kickoff_utc
+        `)
+        .bind(...params)
+        .all();
+
+    if (r.results?.length) {
+      return r.results.map(
+        x => ({
+          ...x,
+          logos: {}
+        })
+      );
+    }
   }
 
-  const date =
-    options.date ||
-    todayISO();
+  let demo =
+    demoFixtures;
 
-  const range =
-    dateRange(date);
-
-  let sql = `
-    SELECT
-      id,
-      league_id leagueId,
-      league_name league,
-      country,
-      kickoff_utc kickoffUtc,
-      status,
-      home_team_id homeId,
-      home_team home,
-      away_team_id awayId,
-      away_team away,
-      home_goals homeGoals,
-      away_goals awayGoals,
-      raw_json rawJson
-    FROM fixtures
-    WHERE kickoff_utc >= ?
-      AND kickoff_utc < ?
-  `;
-
-  const params = [
-    range.start,
-    range.end
-  ];
-
-  if (options.country) {
-    sql += `
-      AND LOWER(country) = LOWER(?)
-    `;
-
-    params.push(
-      options.country
-    );
+  if (filters.country) {
+    demo =
+      demo.filter(
+        x =>
+          x.country ===
+          filters.country
+      );
   }
 
-  if (options.leagueId) {
-    sql += `
-      AND league_id = ?
-    `;
-
-    params.push(
-      Number(options.leagueId)
-    );
+  if (filters.leagueId) {
+    demo =
+      demo.filter(
+        x =>
+          String(
+            x.leagueId
+          ) ===
+          String(
+            filters.leagueId
+          )
+      );
   }
 
-  if (options.league) {
-    sql += `
-      AND LOWER(league_name) = LOWER(?)
-    `;
-
-    params.push(
-      options.league
-    );
+  if (filters.league) {
+    demo =
+      demo.filter(
+        x =>
+          x.league ===
+          filters.league
+      );
   }
 
-  sql += `
-    ORDER BY kickoff_utc
-  `;
-
-  const r =
-    await env.DB
-      .prepare(sql)
-      .bind(...params)
-      .all();
-
-  return (
-    r.results || []
-  ).map(x => ({
-    ...x,
-    logos: {}
-  }));
+  return demo;
 }
 
 /* =========================================================
@@ -729,39 +841,27 @@ async function readFixtures(
    ========================================================= */
 
 async function readCountries(
-  env,
-  date
+  env
 ) {
   if (!env.DB) {
     return [
       ...new Set(
         demoFixtures.map(
-          x => x.country
+          f => f.country
         )
       )
     ].sort();
   }
-
-  const range =
-    dateRange(
-      date || todayISO()
-    );
 
   const r =
     await env.DB
       .prepare(`
         SELECT DISTINCT country
         FROM fixtures
-        WHERE kickoff_utc >= ?
-          AND kickoff_utc < ?
-          AND country IS NOT NULL
-          AND country != ''
+        WHERE country IS NOT NULL
+          AND country!=''
         ORDER BY country
       `)
-      .bind(
-        range.start,
-        range.end
-      )
       .all();
 
   return (
@@ -777,67 +877,87 @@ async function readCountries(
 
 async function readLeagues(
   env,
-  country,
-  date
+  country
 ) {
-  if (!country) {
-    return [];
-  }
-
   if (!env.DB) {
     return [
       ...new Map(
         demoFixtures
           .filter(
-            x =>
-              x.country
+            f =>
+              !country ||
+              f.country
                 .toLowerCase() ===
-              country.toLowerCase()
+                country.toLowerCase()
           )
-          .map(x => [
-            x.leagueId,
+          .map(f => [
+            f.leagueId,
             {
-              id: x.leagueId,
-              name: x.league,
-              country: x.country,
-              fixtureCount: 1
+              leagueId:
+                f.leagueId,
+              league:
+                f.league,
+              country:
+                f.country,
+              fixtureCount:
+                1
             }
           ])
       ).values()
     ];
   }
 
-  const range =
-    dateRange(
-      date || todayISO()
+  if (country) {
+    const r =
+      await env.DB
+        .prepare(`
+          SELECT
+            league_id leagueId,
+            league_name league,
+            country,
+            COUNT(*) fixtureCount
+          FROM fixtures
+          WHERE country=?
+            AND league_name IS NOT NULL
+            AND league_name!=''
+          GROUP BY
+            league_id,
+            league_name,
+            country
+          ORDER BY league_name
+        `)
+        .bind(country)
+        .all();
+
+    return (
+      r.results || []
     );
+  }
 
   const r =
     await env.DB
       .prepare(`
         SELECT
-          league_id id,
-          league_name name,
+          league_id leagueId,
+          league_name league,
           country,
           COUNT(*) fixtureCount
         FROM fixtures
-        WHERE kickoff_utc >= ?
-          AND kickoff_utc < ?
-          AND LOWER(country) = LOWER(?)
+        WHERE league_name IS NOT NULL
+          AND league_name!=''
         GROUP BY
           league_id,
           league_name,
           country
-        ORDER BY league_name
+        ORDER BY
+          country,
+          league_name
       `)
-      .bind(
-        range.start,
-        range.end,
-        country
-      )
       .all();
 
-  return r.results || [];
+  return (
+    r.results || []
+  );
 }
 
 /* =========================================================
@@ -850,7 +970,9 @@ export default {
     env
   ) {
     const url =
-      new URL(request.url);
+      new URL(
+        request.url
+      );
 
     try {
       /* -------------------------
@@ -863,6 +985,7 @@ export default {
       ) {
         return json({
           ok: true,
+
           service:
             "football-intelligence",
 
@@ -932,29 +1055,21 @@ export default {
         url.pathname ===
         "/api/countries"
       ) {
-        const date =
-          url.searchParams.get(
-            "date"
-          ) || todayISO();
-
         const countries =
           await readCountries(
-            env,
-            date
+            env
           );
 
         return json({
           mode:
-            env.DB
+            env.API_FOOTBALL_KEY
               ? "live"
               : "demo",
 
-          date,
+          countries,
 
           count:
-            countries.length,
-
-          countries
+            countries.length
         });
       }
 
@@ -969,44 +1084,27 @@ export default {
         const country =
           url.searchParams.get(
             "country"
-          );
-
-        const date =
-          url.searchParams.get(
-            "date"
-          ) || todayISO();
-
-        if (!country) {
-          return json(
-            {
-              error:
-                "country parameter is required"
-            },
-            400
-          );
-        }
+          ) || "";
 
         const leagues =
           await readLeagues(
             env,
-            country,
-            date
+            country
           );
 
         return json({
           mode:
-            env.DB
+            env.API_FOOTBALL_KEY
               ? "live"
               : "demo",
 
-          country,
+          country:
+            country || null,
 
-          date,
+          leagues,
 
           count:
-            leagues.length,
-
-          leagues
+            leagues.length
         });
       }
 
@@ -1018,58 +1116,40 @@ export default {
         url.pathname ===
         "/api/fixtures"
       ) {
-        const date =
-          url.searchParams.get(
-            "date"
-          ) || todayISO();
+        const filters = {
+          country:
+            url.searchParams.get(
+              "country"
+            ) || "",
 
-        const country =
-          url.searchParams.get(
-            "country"
-          );
+          leagueId:
+            url.searchParams.get(
+              "leagueId"
+            ) || "",
 
-        const leagueId =
-          url.searchParams.get(
-            "leagueId"
-          );
-
-        const league =
-          url.searchParams.get(
-            "league"
-          );
+          league:
+            url.searchParams.get(
+              "league"
+            ) || ""
+        };
 
         const rows =
           await readFixtures(
             env,
-            {
-              date,
-              country,
-              leagueId,
-              league
-            }
+            filters
           );
 
-        if (
-          rows.length
-        ) {
+        if (rows.length) {
           return json({
             mode: "live",
 
-            date,
-
-            filters: {
-              country:
-                country || null,
-
-              leagueId:
-                leagueId || null,
-
-              league:
-                league || null
-            },
-
             generatedAt:
               new Date().toISOString(),
+
+            filters,
+
+            count:
+              rows.length,
 
             fixtures:
               rows.map(
@@ -1078,48 +1158,44 @@ export default {
           });
         }
 
-        /*
-         * Demo fixtures are only returned
-         * when no explicit live filter is used.
-         */
+        return json({
+          mode: "demo",
 
-        if (
-          !country &&
-          !leagueId &&
-          !league
-        ) {
-          return json({
-            mode: "demo",
+          generatedAt:
+            new Date().toISOString(),
 
-            date,
+          filters,
 
-            generatedAt:
-              new Date().toISOString(),
+          count:
+            demoFixtures.length,
 
-            fixtures:
-              demoFixtures.map(
+          fixtures:
+            demoFixtures
+              .filter(
+                f =>
+                  !filters.country ||
+                  f.country ===
+                    filters.country
+              )
+              .filter(
+                f =>
+                  !filters.leagueId ||
+                  String(
+                    f.leagueId
+                  ) ===
+                    String(
+                      filters.leagueId
+                    )
+              )
+              .filter(
+                f =>
+                  !filters.league ||
+                  f.league ===
+                    filters.league
+              )
+              .map(
                 predict
               )
-          });
-        }
-
-        return json({
-          mode: "live",
-
-          date,
-
-          filters: {
-            country:
-              country || null,
-
-            leagueId:
-              leagueId || null,
-
-            league:
-              league || null
-          },
-
-          fixtures: []
         });
       }
 
@@ -1139,11 +1215,7 @@ export default {
 
         const rows =
           await readFixtures(
-            env,
-            {
-              date:
-                todayISO()
-            }
+            env
           );
 
         const f =
