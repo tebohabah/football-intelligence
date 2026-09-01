@@ -2744,3 +2744,60 @@ footer b{
   }
 
 }
+
+.loading-card{
+  min-height:150px;
+  opacity:.7;
+}
+
+.loading-line{
+  height:12px;
+  width:45%;
+  background:#18212b;
+  border-radius:8px;
+  margin-bottom:18px;
+  animation:pulse 1.2s infinite ease-in-out;
+}
+
+.loading-line.wide{
+  width:80%;
+}
+
+@keyframes pulse{
+  0%,100%{opacity:.35}
+  50%{opacity:1}
+}
+
+.engine-notice{
+  margin-bottom:20px;
+  padding:14px 18px;
+  border:1px solid #66552b;
+  background:#19160c;
+  color:#d7c47a;
+  border-radius:10px;
+  font-size:12px;
+  line-height:1.6;
+}
+
+.country-select,
+.league-select{
+  background:var(--panel);
+  border:1px solid var(--line);
+  color:var(--text);
+  padding:13px 15px;
+  border-radius:10px;
+  min-width:190px;
+  outline:none;
+  cursor:pointer;
+}
+
+.country-select:focus,
+.league-select:focus{
+  border-color:var(--accent2);
+}
+
+.country-select option,
+.league-select option{
+  background:#0d121a;
+  color:#fff;
+}
