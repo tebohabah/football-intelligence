@@ -1,625 +1,185 @@
 let fixtures=[];
-let mode='demo';
-let league='All';
-let query='';
-let loading=true;
+let mode="demo";
+let country="All";
+let league="All";
+let query="";
+let lastUpdated=null;
+let refreshTimer=null;
 
 const pct=n=>`${(Number(n)*100).toFixed(1)}%`;
 
-const esc=s=>
-  String(s??'').replace(
-    /[&<>"']/g,
-    c=>({
-      '&':'&amp;',
-      '<':'&lt;',
-      '>':'&gt;',
-      '"':'&quot;',
-      "'":'&#039;'
-    }[c])
+const esc=s=>String(s??"").replace(
+  /[&<>"']/g,
+  c=>({
+    "&":"&amp;",
+    "<":"&lt;",
+    ">":"&gt;",
+    '"':"&quot;",
+    "'":"&#039;"
+  }[c])
+);
+
+function formatDate(){
+  return new Date().toLocaleDateString(
+    "en-GB",
+    {
+      weekday:"short",
+      day:"2-digit",
+      month:"short"
+    }
   );
-
-const demoFallback=[
-  {
-    id:'fallback-1',
-    league:'Premier League',
-    country:'England',
-    kickoff:'19:30',
-    home:'Arsenal',
-    away:'Chelsea',
-    probabilities:{
-      home:.62,
-      draw:.22,
-      away:.16
-    },
-    expectedGoals:{
-      home:1.82,
-      away:1.18,
-      total:3
-    },
-    markets:{
-      over15:.78,
-      over25:.57,
-      btts:.59
-    },
-    confidence:76,
-    modelAgreement:83,
-    verdict:'Home Win',
-    bestMarkets:[
-      ['Home Win',.62],
-      ['Over 1.5',.78],
-      ['BTTS Yes',.59]
-    ],
-    factors:[
-      {
-        label:'Team strength',
-        value:68,
-        note:'Relative team rating advantage.'
-      },
-      {
-        label:'Recent form',
-        value:63,
-        note:'Recent performance signal.'
-      },
-      {
-        label:'Expected goals',
-        value:67,
-        note:'Attacking expectation differential.'
-      },
-      {
-        label:'Home advantage',
-        value:68,
-        note:'Venue effect.'
-      }
-    ],
-    topScores:[
-      {h:2,a:1,p:.13},
-      {h:1,a:0,p:.12},
-      {h:2,a:0,p:.11},
-      {h:1,a:1,p:.10},
-      {h:3,a:1,p:.08}
-    ]
-  }
-];
-
-function showLoading(){
-
-  document.getElementById(
-    'main'
-  ).innerHTML=`
-
-    <section class="hero">
-
-      <div>
-
-        <div class="eyebrow">
-          Football probability engine
-        </div>
-
-        <h1>
-          Loading today's football intelligence…
-        </h1>
-
-        <p>
-          Connecting to the live fixture engine.
-          This normally takes only a few seconds.
-        </p>
-
-      </div>
-
-      <div class="date-card">
-        <small>ENGINE</small>
-        <b>CONNECTING</b>
-        <small>Please wait</small>
-      </div>
-
-    </section>
-
-    <div class="match-grid">
-
-      ${Array(6).fill(0).map(()=>`
-        <div class="match loading-card">
-          <div class="loading-line"></div>
-          <div class="loading-line wide"></div>
-          <div class="loading-line"></div>
-        </div>
-      `).join('')}
-
-    </div>
-  `;
 }
 
-async function fetchWithTimeout(
-  url,
-  timeout=7000
-){
+function formatUpdated(date){
+  if(!date)return "Not available";
 
-  const controller=
-    new AbortController();
-
-  const timer=
-    setTimeout(
-      ()=>controller.abort(),
-      timeout
-    );
-
-  try{
-
-    const r=
-      await fetch(
-        url,
-        {
-          signal:
-            controller.signal,
-
-          cache:'no-store'
-        }
-      );
-
-    if(!r.ok){
-      throw new Error(
-        `HTTP ${r.status}`
-      );
+  return new Date(date).toLocaleTimeString(
+    "en-GB",
+    {
+      hour:"2-digit",
+      minute:"2-digit",
+      second:"2-digit"
     }
-
-    return await r.json();
-
-  }finally{
-
-    clearTimeout(timer);
-  }
+  );
 }
 
 async function load(){
 
-  showLoading();
-
   try{
 
-    const d=
-      await fetchWithTimeout(
-        '/api/fixtures',
-        7000
-      );
+    const r=await fetch(
+      "/api/fixtures?_="+Date.now(),
+      {
+        cache:"no-store"
+      }
+    );
 
-    fixtures=
-      Array.isArray(d.fixtures)
-        ?d.fixtures
-        :[];
+    if(!r.ok){
+      throw Error("API error "+r.status);
+    }
 
-    mode=
-      d.mode||'unknown';
+    const d=await r.json();
 
-    document.getElementById(
-      'modeBadge'
-    ).textContent=
-      mode.toUpperCase();
+    fixtures=d.fixtures||[];
+    mode=d.mode||"unknown";
+    lastUpdated=d.generatedAt||new Date().toISOString();
 
-    loading=false;
+    const badge=document.getElementById("modeBadge");
+
+    if(badge){
+      badge.textContent=
+        mode==="live"
+        ? "LIVE DATA"
+        : "DEMO DATA";
+    }
 
     renderDashboard();
+
+    scheduleRefresh();
 
   }catch(e){
 
-    console.warn(
-      'Live engine unavailable:',
-      e
-    );
+    const main=document.getElementById("main");
 
-    fixtures=
-      demoFallback;
+    if(main){
 
-    mode='fallback';
-
-    document.getElementById(
-      'modeBadge'
-    ).textContent='FALLBACK';
-
-    loading=false;
-
-    renderDashboard();
-
-    const notice=
-      document.createElement(
-        'div'
-      );
-
-    notice.className=
-      'engine-notice';
-
-    notice.innerHTML=`
-      <b>Live connection is taking longer than expected.</b>
-      Showing the last available demonstration forecast while
-      the engine reconnects.
-    `;
-
-    document.getElementById(
-      'main'
-    ).prepend(notice);
-
-    setTimeout(
-      silentRefresh,
-      15000
-    );
-  }
-}
-
-async function silentRefresh(){
-
-  try{
-
-    const d=
-      await fetchWithTimeout(
-        '/api/fixtures',
-        5000
-      );
-
-    if(
-      Array.isArray(d.fixtures) &&
-      d.fixtures.length
-    ){
-
-      fixtures=d.fixtures;
-      mode=d.mode||'live';
-
-      document.getElementById(
-        'modeBadge'
-      ).textContent=
-        mode.toUpperCase();
-
-      renderDashboard();
+      main.innerHTML=`
+        <div class="error-card">
+          <h2>Engine connection problem</h2>
+          <p>
+            The dashboard could not load prediction data.
+            Check the Worker deployment and refresh.
+          </p>
+          <small>${esc(e.message)}</small>
+        </div>
+      `;
     }
 
-  }catch(_){
-
-    setTimeout(
-      silentRefresh,
-      30000
-    );
   }
 }
 
-function filtered(){
+function scheduleRefresh(){
 
-  return fixtures.filter(
-    f=>
-      (league==='All'||
-       f.league===league)&&
+  if(refreshTimer){
+    clearInterval(refreshTimer);
+  }
 
-      `${f.home} ${f.away} ${f.league}`
-        .toLowerCase()
-        .includes(
-          query.toLowerCase()
-        )
+  /*
+   * Refresh every 3 minutes.
+   * The database/cache prevents unnecessary heavy work.
+   */
+  refreshTimer=setInterval(
+    load,
+    180000
   );
 }
 
 function countries(){
 
-  const map={};
-
-  fixtures.forEach(
-    f=>{
-      const c=f.country||'Other';
-
-      if(!map[c]){
-        map[c]=new Set();
-      }
-
-      map[c].add(f.league);
-    }
-  );
-
-  return map;
+  return [
+    "All",
+    ...new Set(
+      fixtures
+        .map(f=>f.country)
+        .filter(Boolean)
+        .sort()
+    )
+  ];
 }
 
-function renderDashboard(){
+function leaguesForCountry(){
 
-  const countryMap=
-    countries();
-
-  const countryNames=
-    Object.keys(
-      countryMap
-    ).sort();
-
-  const top=
-    [...fixtures]
-      .sort(
-        (a,b)=>
-          Math.max(
-            b.probabilities.home,
-            b.probabilities.draw,
-            b.probabilities.away
-          )-
-          Math.max(
-            a.probabilities.home,
-            a.probabilities.draw,
-            a.probabilities.away
-          )
-      )
-      .slice(0,3);
-
-  document.getElementById(
-    'main'
-  ).innerHTML=`
-
-    <section class="hero">
-
-      <div>
-
-        <div class="eyebrow">
-          Football probability engine
-        </div>
-
-        <h1>
-          See the probabilities behind every match.
-        </h1>
-
-        <p>
-          Team strength, form, expected goals and
-          venue effects are combined into an
-          explainable statistical forecast.
-        </p>
-
-      </div>
-
-      <div class="date-card">
-
-        <small>TODAY</small>
-
-        <b>
-          ${new Date().toLocaleDateString(
-            'en-GB',
-            {
-              weekday:'short',
-              day:'2-digit',
-              month:'short'
-            }
-          )}
-        </b>
-
-        <small>
-          ${fixtures.length}
-          tracked fixtures
-        </small>
-
-      </div>
-
-    </section>
-
-    <div class="toolbar">
-
-      <input
-        class="search"
-        id="search"
-        placeholder="Search team or league…"
-        value="${esc(query)}"
-      >
-
-      <select
-        class="country-select"
-        id="countrySelect"
-      >
-
-        <option value="All">
-          🌍 All countries
-        </option>
-
-        ${countryNames.map(
-          c=>`
-            <option
-              value="${esc(c)}"
-            >
-              ${esc(c)}
-            </option>
-          `
-        ).join('')}
-
-      </select>
-
-      <select
-        class="league-select"
-        id="leagueSelect"
-      >
-
-        <option value="All">
-          All leagues
-        </option>
-
-      </select>
-
-    </div>
-
-    <div class="section-title">
-
-      <h2>
-        🔥 Top opportunities
-      </h2>
-
-      <span>
-        Highest single-outcome probability
-      </span>
-
-    </div>
-
-    <div class="opportunities">
-
-      ${
-        top.length
-          ?top.map(oppCard).join('')
-          :'<div class="empty">No opportunities available.</div>'
-      }
-
-    </div>
-
-    <div class="section-title">
-
-      <h2>
-        Today's matches
-      </h2>
-
-      <span>
-        ${filtered().length} matches
-      </span>
-
-    </div>
-
-    <div class="match-grid">
-
-      ${
-        filtered().map(matchCard).join('')||
-        '<div class="empty">No matches match your filters.</div>'
-      }
-
-    </div>
-  `;
-
-  const searchEl=
-    document.getElementById(
-      'search'
-    );
-
-  searchEl.addEventListener(
-    'input',
-    e=>{
-      query=e.target.value;
-      renderDashboard();
-
-      const s=
-        document.getElementById(
-          'search'
-        );
-
-      if(s){
-        s.focus();
-
-        s.setSelectionRange(
-          query.length,
-          query.length
-        );
-      }
-    }
-  );
-
-  const countrySelect=
-    document.getElementById(
-      'countrySelect'
-    );
-
-  const leagueSelect=
-    document.getElementById(
-      'leagueSelect'
-    );
-
-  const currentCountry=
-    countrySelect.dataset.current||
-    'All';
-
-  countrySelect.value=
-    currentCountry;
-
-  populateLeagues(
-    currentCountry,
-    leagueSelect,
-    countryMap
-  );
-
-  leagueSelect.value=
-    league==='All'
-      ?'All'
-      :league;
-
-  countrySelect.addEventListener(
-    'change',
-    ()=>{
-
-      const c=
-        countrySelect.value;
-
-      countrySelect.dataset.current=
-        c;
-
-      league='All';
-
-      populateLeagues(
-        c,
-        leagueSelect,
-        countryMap
+  const source=
+    country==="All"
+    ? fixtures
+    : fixtures.filter(
+        f=>f.country===country
       );
 
-      renderDashboard();
-    }
-  );
-
-  leagueSelect.addEventListener(
-    'change',
-    ()=>{
-
-      league=
-        leagueSelect.value;
-
-      renderDashboard();
-    }
-  );
+  return [
+    "All",
+    ...new Set(
+      source
+        .map(f=>f.league)
+        .filter(Boolean)
+        .sort()
+    )
+  ];
 }
 
-function populateLeagues(
-  country,
-  select,
-  countryMap
-){
+function filtered(){
 
-  let leagues=[];
+  return fixtures.filter(f=>{
 
-  if(country==='All'){
+    const countryMatch=
+      country==="All" ||
+      f.country===country;
 
-    leagues=
-      [
-        ...new Set(
-          fixtures.map(
-            f=>f.league
-          )
-        )
-      ].sort();
+    const leagueMatch=
+      league==="All" ||
+      f.league===league;
 
-  }else{
+    const searchText=
+      `${f.home} ${f.away} ${f.league} ${f.country}`
+      .toLowerCase();
 
-    leagues=
-      [
-        ...(countryMap[country]||
-          new Set())
-      ].sort();
-  }
+    const queryMatch=
+      searchText.includes(
+        query.toLowerCase()
+      );
 
-  select.innerHTML=`
-    <option value="All">
-      All leagues
-    </option>
-
-    ${leagues.map(
-      l=>`
-        <option
-          value="${esc(l)}"
-        >
-          ${esc(l)}
-        </option>
-      `
-    ).join('')}
-  `;
+    return countryMatch &&
+           leagueMatch &&
+           queryMatch;
+  });
 }
 
 function leader(f){
 
   return [
-    ['Home Win',
-      f.probabilities.home],
-
-    ['Draw',
-      f.probabilities.draw],
-
-    ['Away Win',
-      f.probabilities.away]
-
+    ["Home Win",f.probabilities.home],
+    ["Draw",f.probabilities.draw],
+    ["Away Win",f.probabilities.away]
   ].sort(
     (a,b)=>b[1]-a[1]
   )[0];
@@ -630,28 +190,23 @@ function oppCard(f){
   const l=leader(f);
 
   return `
-
     <div
       class="opportunity"
       onclick="openMatch('${esc(f.id)}')"
     >
 
       <div class="opp-top">
-
         <span>
-          ${esc(f.league)}
+          ${esc(f.country)} · ${esc(f.league)}
         </span>
 
         <span>
           ${esc(f.kickoff)}
         </span>
-
       </div>
 
       <div class="opp-name">
-        ${esc(f.home)}
-        vs
-        ${esc(f.away)}
+        ${esc(f.home)} vs ${esc(f.away)}
       </div>
 
       <div class="opp-market">
@@ -663,22 +218,14 @@ function oppCard(f){
       </div>
 
       <div class="meter">
-        <i
-          style="width:${l[1]*100}%"
-        ></i>
+        <i style="width:${l[1]*100}%"></i>
       </div>
 
       <span class="risk">
-
-        ${
-          f.confidence>=75
-            ?'HIGH CONFIDENCE'
-            :'WATCH'
-        }
-
-        ·
-        ${f.confidence}/100
-
+        ${f.confidence>=75
+          ?"HIGH CONFIDENCE"
+          :"WATCH"}
+        · ${f.confidence}/100
       </span>
 
     </div>
@@ -689,8 +236,9 @@ function matchCard(f){
 
   const l=leader(f);
 
-  return `
+  const status=f.providerStatusLong||f.status||"Scheduled";
 
+  return `
     <div
       class="match"
       onclick="openMatch('${esc(f.id)}')"
@@ -711,6 +259,14 @@ function matchCard(f){
       <div class="teams">
 
         <div class="team">
+          ${f.logos?.home
+            ? `<img
+                 src="${esc(f.logos.home)}"
+                 style="width:28px;height:28px;object-fit:contain;vertical-align:middle;margin-right:7px"
+               >`
+            :""
+          }
+
           ${esc(f.home)}
         </div>
 
@@ -719,58 +275,329 @@ function matchCard(f){
         </div>
 
         <div class="team away">
+
           ${esc(f.away)}
+
+          ${f.logos?.away
+            ? `<img
+                 src="${esc(f.logos.away)}"
+                 style="width:28px;height:28px;object-fit:contain;vertical-align:middle;margin-left:7px"
+               >`
+            :""
+          }
+
         </div>
 
       </div>
 
       <div class="pick-row">
-
-        <span>
-          Model leader
-        </span>
-
+        <span>Model leader</span>
         <b>
           ${esc(l[0])}
           ${pct(l[1])}
         </b>
-
       </div>
 
       <div class="mini-row">
 
         <span>
           xG
-          ${Number(
-            f.expectedGoals?.home||0
-          ).toFixed(2)}
+          ${Number(f.expectedGoals.home).toFixed(2)}
           –
-          ${Number(
-            f.expectedGoals?.away||0
-          ).toFixed(2)}
+          ${Number(f.expectedGoals.away).toFixed(2)}
         </span>
 
         <span>
-          Confidence
-          ${f.confidence}
+          Confidence ${f.confidence}
         </span>
 
+      </div>
+
+      <div
+        style="
+          margin-top:10px;
+          font-size:10px;
+          color:var(--muted);
+        "
+      >
+        ${esc(status)}
       </div>
 
     </div>
   `;
 }
 
+function renderCountryLeagueControls(){
+
+  const cList=countries();
+  const lList=leaguesForCountry();
+
+  return `
+    <div class="toolbar">
+
+      <input
+        class="search"
+        id="search"
+        placeholder="Search team, country or league…"
+        value="${esc(query)}"
+      >
+
+      <select
+        id="countrySelect"
+        class="search"
+        style="flex:0 1 220px"
+      >
+
+        ${cList.map(c=>`
+          <option
+            value="${esc(c)}"
+            ${country===c?"selected":""}
+          >
+            ${esc(c)}
+          </option>
+        `).join("")}
+
+      </select>
+
+      <select
+        id="leagueSelect"
+        class="search"
+        style="flex:0 1 260px"
+      >
+
+        ${lList.map(l=>`
+          <option
+            value="${esc(l)}"
+            ${league===l?"selected":""}
+          >
+            ${esc(l)}
+          </option>
+        `).join("")}
+
+      </select>
+
+    </div>
+  `;
+}
+
+function renderDashboard(){
+
+  const visible=filtered();
+
+  const top=[
+    ...visible
+  ]
+  .sort(
+    (a,b)=>
+      Math.max(
+        b.probabilities.home,
+        b.probabilities.draw,
+        b.probabilities.away
+      )
+      -
+      Math.max(
+        a.probabilities.home,
+        a.probabilities.draw,
+        a.probabilities.away
+      )
+  )
+  .slice(0,3);
+
+  const liveText=
+    mode==="live"
+    ? "LIVE DATA CONNECTED"
+    : "DEMO MODE";
+
+  document.getElementById("main").innerHTML=`
+
+    <section class="hero">
+
+      <div>
+
+        <div class="eyebrow">
+          Football probability engine
+        </div>
+
+        <h1>
+          See the probabilities behind every match.
+        </h1>
+
+        <p>
+          Football Intelligence combines live fixtures,
+          statistical forecasting and probability analysis
+          to identify the most likely outcomes.
+        </p>
+
+      </div>
+
+      <div class="date-card">
+
+        <small>TODAY</small>
+
+        <b>
+          ${formatDate()}
+        </b>
+
+        <small>
+          ${fixtures.length}
+          tracked fixtures
+        </small>
+
+        <small
+          style="
+            margin-top:10px;
+            color:${mode==="live"
+              ?"var(--accent)"
+              :"var(--warn)"};
+            font-weight:800;
+          "
+        >
+          ● ${liveText}
+        </small>
+
+        <small>
+          Updated ${formatUpdated(lastUpdated)}
+        </small>
+
+      </div>
+
+    </section>
+
+    ${renderCountryLeagueControls()}
+
+    <div class="section-title">
+
+      <h2>
+        🔥 Top opportunities
+      </h2>
+
+      <span>
+        Highest single-outcome probability
+      </span>
+
+    </div>
+
+    <div class="opportunities">
+
+      ${
+        top.map(oppCard).join("")
+        ||
+        `
+          <div class="empty">
+            No prediction opportunities found.
+          </div>
+        `
+      }
+
+    </div>
+
+    <div class="section-title">
+
+      <h2>
+        Today's matches
+      </h2>
+
+      <span>
+        ${visible.length} matches
+      </span>
+
+    </div>
+
+    <div class="match-grid">
+
+      ${
+        visible.map(matchCard).join("")
+        ||
+        `
+          <div class="empty">
+            No matches match your filters.
+          </div>
+        `
+      }
+
+    </div>
+  `;
+
+  const searchEl=
+    document.getElementById("search");
+
+  if(searchEl){
+
+    searchEl.addEventListener(
+      "input",
+      e=>{
+        query=e.target.value;
+        renderDashboard();
+
+        const searchAgain=
+          document.getElementById("search");
+
+        if(searchAgain){
+          searchAgain.focus();
+
+          try{
+            searchAgain.setSelectionRange(
+              query.length,
+              query.length
+            );
+          }catch{}
+        }
+      }
+    );
+  }
+
+  const countryEl=
+    document.getElementById("countrySelect");
+
+  if(countryEl){
+
+    countryEl.addEventListener(
+      "change",
+      e=>{
+
+        country=e.target.value;
+
+        /*
+         * Whenever the country changes,
+         * reset the league because the old league
+         * may not exist in the new country.
+         */
+        league="All";
+
+        renderDashboard();
+      }
+    );
+  }
+
+  const leagueEl=
+    document.getElementById("leagueSelect");
+
+  if(leagueEl){
+
+    leagueEl.addEventListener(
+      "change",
+      e=>{
+        league=e.target.value;
+        renderDashboard();
+      }
+    );
+  }
+}
+
 async function openMatch(id){
 
   try{
 
-    const d=
-      await fetchWithTimeout(
-        '/api/match/'+
-        encodeURIComponent(id),
-        5000
-      );
+    const r=await fetch(
+      "/api/match/"+
+      encodeURIComponent(id)+
+      "?_="+Date.now(),
+      {
+        cache:"no-store"
+      }
+    );
+
+    const d=await r.json();
 
     if(!d.match)return;
 
@@ -782,16 +609,10 @@ async function openMatch(id){
       primary=false
     )=>`
 
-      <div
-        class="prob ${
-          primary
-            ?'primary'
-            :''
-        }"
-      >
+      <div class="prob ${primary?"primary":""}">
 
         <small>
-          ${label}
+          ${esc(label)}
         </small>
 
         <b>
@@ -799,23 +620,23 @@ async function openMatch(id){
         </b>
 
         <div class="bar">
-
           <i
             style="width:${v*100}%"
           ></i>
-
         </div>
 
       </div>
     `;
 
     document.getElementById(
-      'modalContent'
+      "modalContent"
     ).innerHTML=`
 
       <div class="modal-title">
 
         <div class="eyebrow">
+          ${esc(p.country||"")}
+          ·
           ${esc(p.league)}
           ·
           ${esc(p.kickoff)}
@@ -838,7 +659,6 @@ async function openMatch(id){
         <p class="muted">
 
           Model verdict:
-
           <b class="accent">
             ${esc(p.verdict)}
           </b>
@@ -851,40 +671,59 @@ async function openMatch(id){
 
         </p>
 
+        <p
+          style="
+            font-size:11px;
+            color:${d.mode==="live"
+              ?"var(--accent)"
+              :"var(--warn)"};
+          "
+        >
+
+          ●
+
+          ${
+            d.mode==="live"
+            ? "LIVE PROVIDER DATA"
+            : "DEMO MODEL"
+          }
+
+        </p>
+
       </div>
 
       <div class="prob-grid">
 
         ${b(
-          'Home Win',
+          "Home Win",
           p.probabilities.home,
-          p.verdict==='Home Win'
+          p.verdict==="Home Win"
         )}
 
         ${b(
-          'Draw',
+          "Draw",
           p.probabilities.draw,
-          p.verdict==='Draw'
+          p.verdict==="Draw"
         )}
 
         ${b(
-          'Away Win',
+          "Away Win",
           p.probabilities.away,
-          p.verdict==='Away Win'
+          p.verdict==="Away Win"
         )}
 
         ${b(
-          'Over 1.5',
+          "Over 1.5",
           p.markets.over15
         )}
 
         ${b(
-          'Over 2.5',
+          "Over 2.5",
           p.markets.over25
         )}
 
         ${b(
-          'BTTS Yes',
+          "BTTS Yes",
           p.markets.btts
         )}
 
@@ -903,19 +742,30 @@ async function openMatch(id){
           </p>
 
           <p class="muted">
+
             Expected goals:
+
             <b>
-              ${p.expectedGoals.home.toFixed(2)}
+              ${Number(
+                p.expectedGoals.home
+              ).toFixed(2)}
             </b>
+
             –
+
             <b>
-              ${p.expectedGoals.away.toFixed(2)}
+              ${Number(
+                p.expectedGoals.away
+              ).toFixed(2)}
             </b>
+
           </p>
 
           <p class="muted">
             Projected total:
-            ${p.expectedGoals.total.toFixed(2)}
+            ${Number(
+              p.expectedGoals.total
+            ).toFixed(2)}
           </p>
 
           <p class="muted">
@@ -931,8 +781,9 @@ async function openMatch(id){
             🎯 Highest-probability markets
           </h3>
 
-          ${p.bestMarkets.map(
-            x=>`
+          ${
+            (p.bestMarkets||[])
+            .map(x=>`
 
               <div class="pick-row">
 
@@ -946,8 +797,9 @@ async function openMatch(id){
 
               </div>
 
-            `
-          ).join('')}
+            `)
+            .join("")
+          }
 
         </div>
 
@@ -959,8 +811,9 @@ async function openMatch(id){
           🧠 Why the model leans this way
         </h3>
 
-        ${p.factors.map(
-          x=>`
+        ${
+          (p.factors||[])
+          .map(x=>`
 
             <div class="factor">
 
@@ -990,8 +843,9 @@ async function openMatch(id){
 
             </div>
 
-          `
-        ).join('')}
+          `)
+          .join("")
+        }
 
       </div>
 
@@ -1003,8 +857,9 @@ async function openMatch(id){
 
         <div class="score-list">
 
-          ${p.topScores.map(
-            s=>`
+          ${
+            (p.topScores||[])
+            .map(s=>`
 
               <div class="score">
 
@@ -1018,26 +873,50 @@ async function openMatch(id){
 
               </div>
 
-            `
-          ).join('')}
+            `)
+            .join("")
+          }
 
         </div>
 
       </div>
 
+      ${
+        p.advice
+        ? `
+          <div class="subcard space">
+
+            <h3>
+              💡 Provider insight
+            </h3>
+
+            <p class="muted">
+              ${esc(p.advice)}
+            </p>
+
+          </div>
+        `
+        :""
+      }
+
       <p class="warning">
 
-        ⚠️ Probabilities are statistical
-        estimates, not guarantees.
+        ⚠️
+
+        ${
+          esc(
+            p.warning||
+            "Predictions are statistical estimates. No outcome is guaranteed."
+          )
+        }
 
       </p>
     `;
 
-    document.getElementById(
-      'modal'
-    ).classList.remove(
-      'hidden'
-    );
+    document
+      .getElementById("modal")
+      .classList
+      .remove("hidden");
 
   }catch(e){
 
@@ -1048,38 +927,36 @@ async function openMatch(id){
 
 function closeModal(){
 
-  document.getElementById(
-    'modal'
-  ).classList.add(
-    'hidden'
-  );
+  document
+    .getElementById("modal")
+    .classList
+    .add("hidden");
 }
 
 function renderPage(page){
 
-  document.querySelectorAll(
-    '.nav'
-  ).forEach(
-    x=>x.classList.remove(
-      'active'
+  document
+    .querySelectorAll(".nav")
+    .forEach(
+      x=>x.classList.remove("active")
+    );
+
+  document
+    .querySelector(
+      `.nav[data-page="${page}"]`
     )
-  );
+    ?.classList
+    .add("active");
 
-  document.querySelector(
-    `.nav[data-page="${page}"]`
-  )?.classList.add(
-    'active'
-  );
-
-  if(page==='dashboard'){
+  if(page==="dashboard"){
     renderDashboard();
     return;
   }
 
-  if(page==='performance'){
+  if(page==="performance"){
 
     document.getElementById(
-      'main'
+      "main"
     ).innerHTML=`
 
       <div class="page-head">
@@ -1093,10 +970,9 @@ function renderPage(page){
         </h1>
 
         <p>
-          Performance statistics will be
-          populated from immutable prediction
-          records as historical predictions
-          accumulate.
+          Performance statistics will be populated
+          from immutable prediction records as the
+          historical evaluation layer is built.
         </p>
 
       </div>
@@ -1144,10 +1020,8 @@ function renderPage(page){
           Accuracy measures hit rate.
           Brier score and log loss evaluate
           probability quality.
-
-          Calibration checks whether a 60%
-          forecast actually occurs about 60%
-          of the time.
+          Calibration checks whether a 60% forecast
+          actually occurs about 60% of the time.
 
         </p>
 
@@ -1157,10 +1031,10 @@ function renderPage(page){
     return;
   }
 
-  if(page==='methodology'){
+  if(page==="methodology"){
 
     document.getElementById(
-      'main'
+      "main"
     ).innerHTML=`
 
       <div class="page-head">
@@ -1174,10 +1048,9 @@ function renderPage(page){
         </h1>
 
         <p>
-          The Football Intelligence Engine
-          combines statistical modelling,
-          historical data and live football
-          context.
+          Football Intelligence combines live
+          football data with statistical modelling
+          and probability analysis.
         </p>
 
       </div>
@@ -1187,33 +1060,33 @@ function renderPage(page){
         <div class="method-card">
 
           <h3>
-            1. Team strength
+            1. Live fixture intelligence
           </h3>
 
           <p>
-            Elo-style ratings capture
-            persistent differences in
-            team quality.
+            Fixtures are retrieved from the live
+            football data provider and stored in
+            the Cloudflare database.
           </p>
 
           <h3>
-            2. Goal model
+            2. Prediction layer
           </h3>
 
           <p>
-            Expected-goal estimates feed
-            a Poisson-style score matrix.
+            Provider predictions are combined with
+            our local statistical framework.
           </p>
 
           <h3>
-            3. Context
+            3. Match context
           </h3>
 
           <p>
-            Form, home/away splits,
-            opponent strength, rest,
-            injuries and lineups can
-            become model features.
+            Form, historical performance, expected
+            goals and other contextual variables
+            become progressively richer as the
+            intelligence engine develops.
           </p>
 
         </div>
@@ -1221,20 +1094,27 @@ function renderPage(page){
         <div class="method-card">
 
           <h3>
-            4. Ensemble & calibration
+            4. Probability, not certainty
           </h3>
 
           <p>
-            Independent models can be
-            combined and calibrated against
-            historical outcomes.
+            Every output is expressed as a probability.
+            No prediction is presented as guaranteed.
           </p>
 
           <div class="formula">
 
-            data → features → models
-            → score matrix → ensemble
-            → calibration → probabilities
+            live data
+            →
+            features
+            →
+            models
+            →
+            probabilities
+            →
+            calibration
+            →
+            evaluation
 
           </div>
 
@@ -1243,9 +1123,9 @@ function renderPage(page){
           </h3>
 
           <p>
-            Predictions are designed to be
-            recorded before kickoff and
-            graded after the match.
+            Future versions will retain predictions
+            before kickoff and grade them against
+            actual results.
           </p>
 
         </div>
@@ -1255,15 +1135,26 @@ function renderPage(page){
   }
 }
 
-document.querySelectorAll(
-  '.nav'
-).forEach(
-  b=>b.addEventListener(
-    'click',
-    ()=>renderPage(
-      b.dataset.page
+document
+  .querySelectorAll(".nav")
+  .forEach(
+    b=>b.addEventListener(
+      "click",
+      ()=>renderPage(
+        b.dataset.page
+      )
     )
-  )
-);
+  );
+
+document
+  .getElementById("modal")
+  ?.addEventListener(
+    "click",
+    e=>{
+      if(e.target.id==="modal"){
+        closeModal();
+      }
+    }
+  );
 
 load();
