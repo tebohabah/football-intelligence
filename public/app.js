@@ -1,1601 +1,833 @@
-/* =========================================================
-   FOOTBALL INTELLIGENCE ENGINE
-   FRONTEND APPLICATION
-   ========================================================= */
+let fixtures=[];
+let mode='demo';
+let league='All';
+let query='';
+let loading=true;
 
-let fixtures = [];
-let countries = [];
-let leagues = [];
+const pct=n=>`${(Number(n)*100).toFixed(1)}%`;
 
-let mode = "demo";
-
-let selectedCountry = "";
-let selectedLeague = "";
-let selectedDate = getTodayISO();
-
-let query = "";
-let currentPage = "dashboard";
-
-let refreshTimer = null;
-
-
-/* =========================================================
-   HELPERS
-   ========================================================= */
-
-const pct = n =>
-  `${(Number(n || 0) * 100).toFixed(1)}%`;
-
-const num = n =>
-  Number(n || 0);
-
-const esc = s =>
-  String(s ?? "")
-    .replace(/[&<>"']/g, c => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#039;"
-    }[c]));
-
-
-function getTodayISO() {
-  const d = new Date();
-
-  return d.toISOString().slice(0, 10);
-}
-
-
-function formatDate(date) {
-  const d = new Date(`${date}T12:00:00`);
-
-  return d.toLocaleDateString(
-    "en-GB",
-    {
-      weekday: "short",
-      day: "2-digit",
-      month: "short",
-      year: "numeric"
-    }
+const esc=s=>
+  String(s??'').replace(
+    /[&<>"']/g,
+    c=>({
+      '&':'&amp;',
+      '<':'&lt;',
+      '>':'&gt;',
+      '"':'&quot;',
+      "'":'&#039;'
+    }[c])
   );
-}
 
-
-function formatKickoff(utc) {
-
-  if (!utc) return "--:--";
-
-  const d = new Date(utc);
-
-  if (Number.isNaN(d.getTime())) {
-    return "--:--";
-  }
-
-  return d.toLocaleTimeString(
-    "en-GB",
-    {
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: "Africa/Lagos"
-    }
-  );
-}
-
-
-function statusLabel(status) {
-
-  const map = {
-    NS: "Not Started",
-    TBD: "Time TBD",
-    LIVE: "LIVE",
-    1H: "1st Half",
-    HT: "Half Time",
-    2H: "2nd Half",
-    ET: "Extra Time",
-    PEN: "Penalties",
-    FT: "Full Time",
-    AET: "After Extra Time",
-    PST: "Postponed",
-    CANC: "Cancelled",
-    ABD: "Abandoned"
-  };
-
-  return map[status] || status || "Scheduled";
-}
-
-
-function statusClass(status) {
-
-  if (
-    ["LIVE", "1H", "2H", "ET", "PEN"].includes(status)
-  ) {
-    return "status-live";
-  }
-
-  if (
-    ["FT", "AET"].includes(status)
-  ) {
-    return "status-finished";
-  }
-
-  if (
-    ["PST", "CANC", "ABD"].includes(status)
-  ) {
-    return "status-danger";
-  }
-
-  return "status-scheduled";
-}
-
-
-/* =========================================================
-   API
-   ========================================================= */
-
-async function api(url) {
-
-  const r = await fetch(url, {
-    cache: "no-store"
-  });
-
-  if (!r.ok) {
-    throw new Error(
-      `Request failed (${r.status})`
-    );
-  }
-
-  return await r.json();
-}
-
-
-/* =========================================================
-   INITIAL LOAD
-   ========================================================= */
-
-async function load() {
-
-  try {
-
-    setMode("CONNECTING");
-
-    await Promise.all([
-      loadCountries(),
-      loadFixtures()
-    ]);
-
-    renderDashboard();
-
-    startAutoRefresh();
-
-  } catch (e) {
-
-    console.error(e);
-
-    renderError(e);
-
-  }
-
-}
-
-
-/* =========================================================
-   LOAD COUNTRIES
-   ========================================================= */
-
-async function loadCountries() {
-
-  const data =
-    await api("/api/countries");
-
-  countries =
-    data.countries || [];
-
-}
-
-
-/* =========================================================
-   LOAD LEAGUES
-   ========================================================= */
-
-async function loadLeagues(country = "") {
-
-  const url =
-    country
-      ? `/api/leagues?country=${encodeURIComponent(country)}`
-      : "/api/leagues";
-
-  const data =
-    await api(url);
-
-  leagues =
-    data.leagues || [];
-
-}
-
-
-/* =========================================================
-   LOAD FIXTURES
-   ========================================================= */
-
-async function loadFixtures() {
-
-  let url =
-    `/api/fixtures?date=${encodeURIComponent(
-      selectedDate
-    )}`;
-
-  if (selectedCountry) {
-
-    url +=
-      `&country=${encodeURIComponent(
-        selectedCountry
-      )}`;
-
-  }
-
-  if (selectedLeague) {
-
-    url +=
-      `&league=${encodeURIComponent(
-        selectedLeague
-      )}`;
-
-  }
-
-  const data =
-    await api(url);
-
-  fixtures =
-    data.fixtures || [];
-
-  mode =
-    data.mode || "unknown";
-
-  setMode(mode.toUpperCase());
-
-}
-
-
-/* =========================================================
-   MODE BADGE
-   ========================================================= */
-
-function setMode(value) {
-
-  const badge =
-    document.getElementById(
-      "modeBadge"
-    );
-
-  if (!badge) return;
-
-  badge.textContent =
-    value;
-
-}
-
-
-/* =========================================================
-   AUTO REFRESH
-   ========================================================= */
-
-function startAutoRefresh() {
-
-  if (refreshTimer) {
-    clearInterval(refreshTimer);
-  }
-
-  refreshTimer =
-    setInterval(
-      async () => {
-
-        if (
-          currentPage !==
-          "dashboard"
-        ) {
-          return;
-        }
-
-        try {
-
-          await loadFixtures();
-
-          renderDashboard();
-
-        } catch (e) {
-
-          console.error(
-            "Auto refresh failed:",
-            e
-          );
-
-        }
-
+const demoFallback=[
+  {
+    id:'fallback-1',
+    league:'Premier League',
+    country:'England',
+    kickoff:'19:30',
+    home:'Arsenal',
+    away:'Chelsea',
+    probabilities:{
+      home:.62,
+      draw:.22,
+      away:.16
+    },
+    expectedGoals:{
+      home:1.82,
+      away:1.18,
+      total:3
+    },
+    markets:{
+      over15:.78,
+      over25:.57,
+      btts:.59
+    },
+    confidence:76,
+    modelAgreement:83,
+    verdict:'Home Win',
+    bestMarkets:[
+      ['Home Win',.62],
+      ['Over 1.5',.78],
+      ['BTTS Yes',.59]
+    ],
+    factors:[
+      {
+        label:'Team strength',
+        value:68,
+        note:'Relative team rating advantage.'
       },
-      120000
-    );
-
-}
-
-
-/* =========================================================
-   FILTERED FIXTURES
-   ========================================================= */
-
-function filtered() {
-
-  return fixtures.filter(f => {
-
-    const searchText =
-      `${f.home} ${f.away} ${f.league} ${f.country}`
-        .toLowerCase();
-
-    const matchesQuery =
-      searchText.includes(
-        query.toLowerCase()
-      );
-
-    const matchesCountry =
-      !selectedCountry ||
-      String(f.country).toLowerCase() ===
-        String(selectedCountry).toLowerCase();
-
-    const matchesLeague =
-      !selectedLeague ||
-      String(f.league).toLowerCase() ===
-        String(selectedLeague).toLowerCase();
-
-    return (
-      matchesQuery &&
-      matchesCountry &&
-      matchesLeague
-    );
-
-  });
-
-}
-
-
-/* =========================================================
-   LEAGUE GROUPING
-   ========================================================= */
-
-function groupedLeagues() {
-
-  const groups = {};
-
-  leagues.forEach(l => {
-
-    const country =
-      l.country || "Other";
-
-    if (!groups[country]) {
-      groups[country] = [];
-    }
-
-    groups[country].push(l);
-
-  });
-
-  return groups;
-
-}
-
-
-/* =========================================================
-   PREDICTION LEADER
-   ========================================================= */
-
-function leader(f) {
-
-  return [
-    [
-      "Home Win",
-      num(f.probabilities?.home)
+      {
+        label:'Recent form',
+        value:63,
+        note:'Recent performance signal.'
+      },
+      {
+        label:'Expected goals',
+        value:67,
+        note:'Attacking expectation differential.'
+      },
+      {
+        label:'Home advantage',
+        value:68,
+        note:'Venue effect.'
+      }
     ],
-
-    [
-      "Draw",
-      num(f.probabilities?.draw)
-    ],
-
-    [
-      "Away Win",
-      num(f.probabilities?.away)
+    topScores:[
+      {h:2,a:1,p:.13},
+      {h:1,a:0,p:.12},
+      {h:2,a:0,p:.11},
+      {h:1,a:1,p:.10},
+      {h:3,a:1,p:.08}
     ]
-  ].sort(
-    (a, b) => b[1] - a[1]
-  )[0];
-
-}
-
-
-/* =========================================================
-   CONFIDENCE LABEL
-   ========================================================= */
-
-function confidenceLabel(value) {
-
-  value =
-    Number(value || 0);
-
-  if (value >= 80) {
-    return {
-      label: "Very Strong",
-      className: "very-strong"
-    };
   }
+];
 
-  if (value >= 70) {
-    return {
-      label: "Strong",
-      className: "strong"
-    };
-  }
-
-  if (value >= 60) {
-    return {
-      label: "Moderate",
-      className: "moderate"
-    };
-  }
-
-  return {
-    label: "Watch",
-    className: "watch"
-  };
-
-}
-
-
-/* =========================================================
-   DASHBOARD
-   ========================================================= */
-
-function renderDashboard() {
-
-  currentPage =
-    "dashboard";
-
-  activateNav(
-    "dashboard"
-  );
-
-  const list =
-    filtered();
-
-  const top =
-    [...list]
-      .sort(
-        (a, b) =>
-          Math.max(
-            num(b.probabilities?.home),
-            num(b.probabilities?.draw),
-            num(b.probabilities?.away)
-          ) -
-          Math.max(
-            num(a.probabilities?.home),
-            num(a.probabilities?.draw),
-            num(a.probabilities?.away)
-          )
-      )
-      .slice(0, 3);
-
+function showLoading(){
 
   document.getElementById(
-    "main"
-  ).innerHTML = `
+    'main'
+  ).innerHTML=`
 
     <section class="hero">
 
-      <div class="hero-copy">
+      <div>
 
         <div class="eyebrow">
-          FOOTBALL PROBABILITY ENGINE
+          Football probability engine
         </div>
 
         <h1>
-          Football intelligence,
-          <span>before kickoff.</span>
+          Loading today's football intelligence…
         </h1>
 
         <p>
-          Explore statistical probabilities, expected goals,
-          scoreline simulations and model confidence across
-          today's football fixtures.
+          Connecting to the live fixture engine.
+          This normally takes only a few seconds.
         </p>
-
-        <div class="hero-status">
-
-          <span class="status-pill">
-            <i></i>
-            ${mode === "live" ? "LIVE DATA CONNECTED" : "DEMO DATA"}
-          </span>
-
-          <span class="updated">
-            Updated ${new Date().toLocaleTimeString(
-              "en-GB",
-              {
-                hour: "2-digit",
-                minute: "2-digit"
-              }
-            )}
-          </span>
-
-        </div>
 
       </div>
 
+      <div class="date-card">
+        <small>ENGINE</small>
+        <b>CONNECTING</b>
+        <small>Please wait</small>
+      </div>
+
+    </section>
+
+    <div class="match-grid">
+
+      ${Array(6).fill(0).map(()=>`
+        <div class="match loading-card">
+          <div class="loading-line"></div>
+          <div class="loading-line wide"></div>
+          <div class="loading-line"></div>
+        </div>
+      `).join('')}
+
+    </div>
+  `;
+}
+
+async function fetchWithTimeout(
+  url,
+  timeout=7000
+){
+
+  const controller=
+    new AbortController();
+
+  const timer=
+    setTimeout(
+      ()=>controller.abort(),
+      timeout
+    );
+
+  try{
+
+    const r=
+      await fetch(
+        url,
+        {
+          signal:
+            controller.signal,
+
+          cache:'no-store'
+        }
+      );
+
+    if(!r.ok){
+      throw new Error(
+        `HTTP ${r.status}`
+      );
+    }
+
+    return await r.json();
+
+  }finally{
+
+    clearTimeout(timer);
+  }
+}
+
+async function load(){
+
+  showLoading();
+
+  try{
+
+    const d=
+      await fetchWithTimeout(
+        '/api/fixtures',
+        7000
+      );
+
+    fixtures=
+      Array.isArray(d.fixtures)
+        ?d.fixtures
+        :[];
+
+    mode=
+      d.mode||'unknown';
+
+    document.getElementById(
+      'modeBadge'
+    ).textContent=
+      mode.toUpperCase();
+
+    loading=false;
+
+    renderDashboard();
+
+  }catch(e){
+
+    console.warn(
+      'Live engine unavailable:',
+      e
+    );
+
+    fixtures=
+      demoFallback;
+
+    mode='fallback';
+
+    document.getElementById(
+      'modeBadge'
+    ).textContent='FALLBACK';
+
+    loading=false;
+
+    renderDashboard();
+
+    const notice=
+      document.createElement(
+        'div'
+      );
+
+    notice.className=
+      'engine-notice';
+
+    notice.innerHTML=`
+      <b>Live connection is taking longer than expected.</b>
+      Showing the last available demonstration forecast while
+      the engine reconnects.
+    `;
+
+    document.getElementById(
+      'main'
+    ).prepend(notice);
+
+    setTimeout(
+      silentRefresh,
+      15000
+    );
+  }
+}
+
+async function silentRefresh(){
+
+  try{
+
+    const d=
+      await fetchWithTimeout(
+        '/api/fixtures',
+        5000
+      );
+
+    if(
+      Array.isArray(d.fixtures) &&
+      d.fixtures.length
+    ){
+
+      fixtures=d.fixtures;
+      mode=d.mode||'live';
+
+      document.getElementById(
+        'modeBadge'
+      ).textContent=
+        mode.toUpperCase();
+
+      renderDashboard();
+    }
+
+  }catch(_){
+
+    setTimeout(
+      silentRefresh,
+      30000
+    );
+  }
+}
+
+function filtered(){
+
+  return fixtures.filter(
+    f=>
+      (league==='All'||
+       f.league===league)&&
+
+      `${f.home} ${f.away} ${f.league}`
+        .toLowerCase()
+        .includes(
+          query.toLowerCase()
+        )
+  );
+}
+
+function countries(){
+
+  const map={};
+
+  fixtures.forEach(
+    f=>{
+      const c=f.country||'Other';
+
+      if(!map[c]){
+        map[c]=new Set();
+      }
+
+      map[c].add(f.league);
+    }
+  );
+
+  return map;
+}
+
+function renderDashboard(){
+
+  const countryMap=
+    countries();
+
+  const countryNames=
+    Object.keys(
+      countryMap
+    ).sort();
+
+  const top=
+    [...fixtures]
+      .sort(
+        (a,b)=>
+          Math.max(
+            b.probabilities.home,
+            b.probabilities.draw,
+            b.probabilities.away
+          )-
+          Math.max(
+            a.probabilities.home,
+            a.probabilities.draw,
+            a.probabilities.away
+          )
+      )
+      .slice(0,3);
+
+  document.getElementById(
+    'main'
+  ).innerHTML=`
+
+    <section class="hero">
+
+      <div>
+
+        <div class="eyebrow">
+          Football probability engine
+        </div>
+
+        <h1>
+          See the probabilities behind every match.
+        </h1>
+
+        <p>
+          Team strength, form, expected goals and
+          venue effects are combined into an
+          explainable statistical forecast.
+        </p>
+
+      </div>
 
       <div class="date-card">
 
-        <small>ANALYSIS DATE</small>
+        <small>TODAY</small>
 
-        <strong>
-          ${esc(formatDate(selectedDate))}
-        </strong>
+        <b>
+          ${new Date().toLocaleDateString(
+            'en-GB',
+            {
+              weekday:'short',
+              day:'2-digit',
+              month:'short'
+            }
+          )}
+        </b>
 
-        <span>
-          ${list.length} fixtures available
-        </span>
+        <small>
+          ${fixtures.length}
+          tracked fixtures
+        </small>
 
       </div>
 
     </section>
 
+    <div class="toolbar">
 
-    ${renderControls()}
+      <input
+        class="search"
+        id="search"
+        placeholder="Search team or league…"
+        value="${esc(query)}"
+      >
 
+      <select
+        class="country-select"
+        id="countrySelect"
+      >
 
-    <section class="engine-summary">
+        <option value="All">
+          🌍 All countries
+        </option>
 
-      <div class="summary-card">
+        ${countryNames.map(
+          c=>`
+            <option
+              value="${esc(c)}"
+            >
+              ${esc(c)}
+            </option>
+          `
+        ).join('')}
 
-        <span class="summary-icon">⚽</span>
+      </select>
 
-        <div>
-          <small>FIXTURES</small>
-          <strong>${list.length}</strong>
-        </div>
+      <select
+        class="league-select"
+        id="leagueSelect"
+      >
 
-      </div>
+        <option value="All">
+          All leagues
+        </option>
 
+      </select>
 
-      <div class="summary-card">
+    </div>
 
-        <span class="summary-icon">🎯</span>
+    <div class="section-title">
 
-        <div>
-          <small>HIGH CONFIDENCE</small>
-          <strong>
-            ${
-              list.filter(
-                x => num(x.confidence) >= 75
-              ).length
-            }
-          </strong>
-        </div>
-
-      </div>
-
-
-      <div class="summary-card">
-
-        <span class="summary-icon">📊</span>
-
-        <div>
-          <small>LEAGUES</small>
-          <strong>
-            ${
-              new Set(
-                list.map(x => x.league)
-              ).size
-            }
-          </strong>
-        </div>
-
-      </div>
-
-
-      <div class="summary-card">
-
-        <span class="summary-icon">🧠</span>
-
-        <div>
-          <small>MODEL</small>
-          <strong>FI 3.0</strong>
-        </div>
-
-      </div>
-
-    </section>
-
-
-    ${
-      top.length
-        ? `
-
-        <div class="section-title">
-
-          <div>
-            <div class="eyebrow">
-              MODEL WATCHLIST
-            </div>
-
-            <h2>
-              Highest probability opportunities
-            </h2>
-          </div>
-
-          <span>
-            Ranked by strongest single probability
-          </span>
-
-        </div>
-
-        <div class="opportunities">
-
-          ${top.map(
-            opportunityCard
-          ).join("")}
-
-        </div>
-
-      `
-        : ""
-    }
-
-
-    <div class="section-title matches-heading">
-
-      <div>
-        <div class="eyebrow">
-          FIXTURE INTELLIGENCE
-        </div>
-
-        <h2>
-          ${selectedLeague || "Today's matches"}
-        </h2>
-      </div>
+      <h2>
+        🔥 Top opportunities
+      </h2>
 
       <span>
-        ${list.length} matches
+        Highest single-outcome probability
       </span>
 
     </div>
 
-
-    <div class="match-grid">
+    <div class="opportunities">
 
       ${
-        list.length
-          ? list.map(
-              matchCard
-            ).join("")
-          : `
-            <div class="empty">
-
-              <div class="empty-icon">
-                🔎
-              </div>
-
-              <h3>
-                No fixtures found
-              </h3>
-
-              <p>
-                Try another country, league,
-                date or search term.
-              </p>
-
-            </div>
-          `
+        top.length
+          ?top.map(oppCard).join('')
+          :'<div class="empty">No opportunities available.</div>'
       }
 
     </div>
 
+    <div class="section-title">
+
+      <h2>
+        Today's matches
+      </h2>
+
+      <span>
+        ${filtered().length} matches
+      </span>
+
+    </div>
+
+    <div class="match-grid">
+
+      ${
+        filtered().map(matchCard).join('')||
+        '<div class="empty">No matches match your filters.</div>'
+      }
+
+    </div>
   `;
 
-
-  attachDashboardEvents();
-
-}
-
-
-/* =========================================================
-   CONTROLS
-   ========================================================= */
-
-function renderControls() {
-
-  const groups =
-    groupedLeagues();
-
-  let leagueOptions =
-    `<option value="">All leagues</option>`;
-
-  Object.keys(groups)
-    .sort()
-    .forEach(country => {
-
-      leagueOptions += `
-        <optgroup label="${esc(country)}">
-          ${groups[country]
-            .sort(
-              (a, b) =>
-                String(a.league)
-                  .localeCompare(
-                    String(b.league)
-                  )
-            )
-            .map(
-              l => `
-                <option
-                  value="${esc(l.league)}"
-                  ${
-                    selectedLeague ===
-                    l.league
-                      ? "selected"
-                      : ""
-                  }
-                >
-                  ${esc(l.league)}
-                </option>
-              `
-            )
-            .join("")}
-        </optgroup>
-      `;
-
-    });
-
-
-  return `
-
-    <section class="control-panel">
-
-      <div class="control-top">
-
-        <div>
-
-          <div class="eyebrow">
-            MATCH EXPLORER
-          </div>
-
-          <h3>
-            Find the matches you want to analyse
-          </h3>
-
-        </div>
-
-        <button
-          class="refresh-btn"
-          id="refreshBtn"
-        >
-          ↻ Refresh
-        </button>
-
-      </div>
-
-
-      <div class="controls">
-
-        <div class="control search-control">
-
-          <label>
-            Search
-          </label>
-
-          <div class="input-wrap">
-
-            <span>⌕</span>
-
-            <input
-              id="search"
-              placeholder="Team, league or country..."
-              value="${esc(query)}"
-            >
-
-          </div>
-
-        </div>
-
-
-        <div class="control">
-
-          <label>
-            Date
-          </label>
-
-          <input
-            type="date"
-            id="dateSelect"
-            value="${esc(selectedDate)}"
-          >
-
-        </div>
-
-
-        <div class="control">
-
-          <label>
-            Country
-          </label>
-
-          <select id="countrySelect">
-
-            <option value="">
-              All countries
-            </option>
-
-            ${countries
-              .sort(
-                (a, b) =>
-                  a.localeCompare(b)
-              )
-              .map(
-                country => `
-                  <option
-                    value="${esc(country)}"
-                    ${
-                      selectedCountry ===
-                      country
-                        ? "selected"
-                        : ""
-                    }
-                  >
-                    ${esc(country)}
-                  </option>
-                `
-              )
-              .join("")}
-
-          </select>
-
-        </div>
-
-
-        <div class="control">
-
-          <label>
-            League
-          </label>
-
-          <select id="leagueSelect">
-
-            ${leagueOptions}
-
-          </select>
-
-        </div>
-
-      </div>
-
-
-      <div class="filter-info">
-
-        <span>
-          ${
-            selectedCountry
-              ? `🌍 ${esc(selectedCountry)}`
-              : "🌍 All countries"
-          }
-        </span>
-
-        <span>
-          ${
-            selectedLeague
-              ? `🏆 ${esc(selectedLeague)}`
-              : "🏆 All leagues"
-          }
-        </span>
-
-        <button
-          class="clear-filters"
-          id="clearFilters"
-        >
-          Clear filters
-        </button>
-
-      </div>
-
-    </section>
-
-  `;
-
-}
-
-
-/* =========================================================
-   DASHBOARD EVENTS
-   ========================================================= */
-
-function attachDashboardEvents() {
-
-  const search =
+  const searchEl=
     document.getElementById(
-      "search"
+      'search'
     );
 
-  const date =
-    document.getElementById(
-      "dateSelect"
-    );
-
-  const country =
-    document.getElementById(
-      "countrySelect"
-    );
-
-  const leagueSelect =
-    document.getElementById(
-      "leagueSelect"
-    );
-
-  const refresh =
-    document.getElementById(
-      "refreshBtn"
-    );
-
-  const clear =
-    document.getElementById(
-      "clearFilters"
-    );
-
-
-  search?.addEventListener(
-    "input",
-    e => {
-
-      query =
-        e.target.value;
-
+  searchEl.addEventListener(
+    'input',
+    e=>{
+      query=e.target.value;
       renderDashboard();
 
-      const input =
+      const s=
         document.getElementById(
-          "search"
+          'search'
         );
 
-      if (input) {
+      if(s){
+        s.focus();
 
-        input.focus();
-
-        input.setSelectionRange(
+        s.setSelectionRange(
           query.length,
           query.length
         );
-
       }
-
     }
   );
 
-
-  date?.addEventListener(
-    "change",
-    async e => {
-
-      selectedDate =
-        e.target.value ||
-        getTodayISO();
-
-      await reloadDashboard();
-
-    }
-  );
-
-
-  country?.addEventListener(
-    "change",
-    async e => {
-
-      selectedCountry =
-        e.target.value;
-
-      selectedLeague = "";
-
-      try {
-
-        await loadLeagues(
-          selectedCountry
-        );
-
-        await loadFixtures();
-
-        renderDashboard();
-
-      } catch (err) {
-
-        renderError(err);
-
-      }
-
-    }
-  );
-
-
-  leagueSelect?.addEventListener(
-    "change",
-    async e => {
-
-      selectedLeague =
-        e.target.value;
-
-      try {
-
-        await loadFixtures();
-
-        renderDashboard();
-
-      } catch (err) {
-
-        renderError(err);
-
-      }
-
-    }
-  );
-
-
-  refresh?.addEventListener(
-    "click",
-    async () => {
-
-      await reloadDashboard();
-
-    }
-  );
-
-
-  clear?.addEventListener(
-    "click",
-    async () => {
-
-      selectedCountry = "";
-      selectedLeague = "";
-      query = "";
-
-      await loadLeagues("");
-
-      await reloadDashboard();
-
-    }
-  );
-
-}
-
-
-/* =========================================================
-   RELOAD
-   ========================================================= */
-
-async function reloadDashboard() {
-
-  const btn =
+  const countrySelect=
     document.getElementById(
-      "refreshBtn"
+      'countrySelect'
     );
 
-  if (btn) {
+  const leagueSelect=
+    document.getElementById(
+      'leagueSelect'
+    );
 
-    btn.disabled = true;
+  const currentCountry=
+    countrySelect.dataset.current||
+    'All';
 
-    btn.innerHTML =
-      "↻ Updating...";
+  countrySelect.value=
+    currentCountry;
 
-  }
+  populateLeagues(
+    currentCountry,
+    leagueSelect,
+    countryMap
+  );
 
-  try {
+  leagueSelect.value=
+    league==='All'
+      ?'All'
+      :league;
 
-    await loadFixtures();
+  countrySelect.addEventListener(
+    'change',
+    ()=>{
 
-    renderDashboard();
+      const c=
+        countrySelect.value;
 
-  } catch (e) {
+      countrySelect.dataset.current=
+        c;
 
-    renderError(e);
+      league='All';
 
-  } finally {
-
-    const newBtn =
-      document.getElementById(
-        "refreshBtn"
+      populateLeagues(
+        c,
+        leagueSelect,
+        countryMap
       );
 
-    if (newBtn) {
-
-      newBtn.disabled =
-        false;
-
-      newBtn.innerHTML =
-        "↻ Refresh";
-
+      renderDashboard();
     }
+  );
 
-  }
+  leagueSelect.addEventListener(
+    'change',
+    ()=>{
 
+      league=
+        leagueSelect.value;
+
+      renderDashboard();
+    }
+  );
 }
 
+function populateLeagues(
+  country,
+  select,
+  countryMap
+){
 
-/* =========================================================
-   OPPORTUNITY CARD
-   ========================================================= */
+  let leagues=[];
 
-function opportunityCard(f) {
+  if(country==='All'){
 
-  const l =
-    leader(f);
+    leagues=
+      [
+        ...new Set(
+          fixtures.map(
+            f=>f.league
+          )
+        )
+      ].sort();
 
-  const confidence =
-    confidenceLabel(
-      f.confidence
-    );
+  }else{
 
+    leagues=
+      [
+        ...(countryMap[country]||
+          new Set())
+      ].sort();
+  }
+
+  select.innerHTML=`
+    <option value="All">
+      All leagues
+    </option>
+
+    ${leagues.map(
+      l=>`
+        <option
+          value="${esc(l)}"
+        >
+          ${esc(l)}
+        </option>
+      `
+    ).join('')}
+  `;
+}
+
+function leader(f){
+
+  return [
+    ['Home Win',
+      f.probabilities.home],
+
+    ['Draw',
+      f.probabilities.draw],
+
+    ['Away Win',
+      f.probabilities.away]
+
+  ].sort(
+    (a,b)=>b[1]-a[1]
+  )[0];
+}
+
+function oppCard(f){
+
+  const l=leader(f);
 
   return `
 
-    <article
-      class="opportunity ${confidence.className}"
+    <div
+      class="opportunity"
       onclick="openMatch('${esc(f.id)}')"
     >
 
       <div class="opp-top">
 
         <span>
-          ${esc(f.country || "")}
-          ·
-          ${esc(f.league || "")}
+          ${esc(f.league)}
         </span>
 
         <span>
-          ${esc(
-            f.kickoff ||
-            formatKickoff(
-              f.providerKickoffUtc
-            )
-          )}
+          ${esc(f.kickoff)}
         </span>
 
       </div>
-
 
       <div class="opp-name">
-
         ${esc(f.home)}
-
-        <span>vs</span>
-
+        vs
         ${esc(f.away)}
-
       </div>
 
-
-      <div class="opp-analysis">
-
-        <div>
-
-          <small>
-            MODEL LEADER
-          </small>
-
-          <strong>
-            ${esc(l[0])}
-          </strong>
-
-        </div>
-
-        <div class="opp-prob">
-          ${pct(l[1])}
-        </div>
-
+      <div class="opp-market">
+        ${esc(l[0])}
       </div>
 
+      <div class="confidence">
+        ${pct(l[1])}
+      </div>
 
       <div class="meter">
-
         <i
-          style="width:${Math.min(
-            100,
-            l[1] * 100
-          )}%"
+          style="width:${l[1]*100}%"
         ></i>
-
       </div>
 
+      <span class="risk">
 
-      <div class="opp-bottom">
+        ${
+          f.confidence>=75
+            ?'HIGH CONFIDENCE'
+            :'WATCH'
+        }
 
-        <span
-          class="confidence-badge ${confidence.className}"
-        >
-          ${confidence.label}
-        </span>
+        ·
+        ${f.confidence}/100
 
-        <span>
-          Model confidence
-          <b>${num(f.confidence)}/100</b>
-        </span>
+      </span>
 
-      </div>
-
-    </article>
-
+    </div>
   `;
-
 }
 
+function matchCard(f){
 
-/* =========================================================
-   MATCH CARD
-   ========================================================= */
-
-function matchCard(f) {
-
-  const l =
-    leader(f);
-
-  const confidence =
-    confidenceLabel(
-      f.confidence
-    );
-
-  const status =
-    f.providerStatus ||
-    f.status ||
-    "NS";
-
-  const kickoff =
-    f.kickoff ||
-    formatKickoff(
-      f.providerKickoffUtc
-    );
-
+  const l=leader(f);
 
   return `
 
-    <article
+    <div
       class="match"
       onclick="openMatch('${esc(f.id)}')"
     >
 
       <div class="match-head">
 
-        <span class="league-label">
-
-          ${
-            f.country
-              ? `${esc(f.country)} · `
-              : ""
-          }
-
+        <span>
           ${esc(f.league)}
-
         </span>
 
-        <span
-          class="fixture-status ${statusClass(status)}"
-        >
-          ${esc(
-            statusLabel(status)
-          )}
+        <span>
+          ${esc(f.kickoff)}
         </span>
 
       </div>
-
-
-      <div class="match-time">
-        ${esc(kickoff)}
-      </div>
-
 
       <div class="teams">
 
         <div class="team">
-
-          ${
-            f.logos?.home
-              ? `
-                <img
-                  src="${esc(f.logos.home)}"
-                  alt=""
-                  class="team-logo"
-                >
-              `
-              : `
-                <span class="team-logo-placeholder">
-                  ⚽
-                </span>
-              `
-          }
-
-          <span>
-            ${esc(f.home)}
-          </span>
-
+          ${esc(f.home)}
         </div>
-
 
         <div class="vs">
           VS
         </div>
 
-
         <div class="team away">
-
-          <span>
-            ${esc(f.away)}
-          </span>
-
-          ${
-            f.logos?.away
-              ? `
-                <img
-                  src="${esc(f.logos.away)}"
-                  alt=""
-                  class="team-logo"
-                >
-              `
-              : `
-                <span class="team-logo-placeholder">
-                  ⚽
-                </span>
-              `
-          }
-
+          ${esc(f.away)}
         </div>
 
       </div>
 
+      <div class="pick-row">
 
-      <div class="prediction-strip">
+        <span>
+          Model leader
+        </span>
 
-        <div>
-
-          <small>
-            PREDICTION
-          </small>
-
-          <strong>
-            ${esc(l[0])}
-          </strong>
-
-        </div>
-
-        <div class="prediction-number">
+        <b>
+          ${esc(l[0])}
           ${pct(l[1])}
-        </div>
+        </b>
 
       </div>
 
-
-      <div class="card-stats">
+      <div class="mini-row">
 
         <span>
           xG
-          <b>
-            ${num(
-              f.expectedGoals?.home
-            ).toFixed(2)}
-            –
-            ${num(
-              f.expectedGoals?.away
-            ).toFixed(2)}
-          </b>
+          ${Number(
+            f.expectedGoals?.home||0
+          ).toFixed(2)}
+          –
+          ${Number(
+            f.expectedGoals?.away||0
+          ).toFixed(2)}
         </span>
 
         <span>
           Confidence
-          <b>
-            ${num(f.confidence)}
-          </b>
-        </span>
-
-        <span>
-          Data
-          <b>
-            ${num(f.dataQuality)}
-          </b>
+          ${f.confidence}
         </span>
 
       </div>
-
-
-      <div class="card-footer">
-
-        <span
-          class="confidence-badge ${confidence.className}"
-        >
-          ${confidence.label}
-        </span>
-
-        <span class="view-analysis">
-          View full analysis →
-        </span>
-
-      </div>
-
-    </article>
-
-  `;
-
-}
-
-
-/* =========================================================
-   MATCH DETAIL
-   ========================================================= */
-
-async function openMatch(id) {
-
-  const modal =
-    document.getElementById(
-      "modal"
-    );
-
-  const content =
-    document.getElementById(
-      "modalContent"
-    );
-
-
-  modal.classList.remove(
-    "hidden"
-  );
-
-
-  content.innerHTML = `
-
-    <div class="modal-loading">
-
-      <div class="loader"></div>
-
-      <h3>
-        Running match analysis...
-      </h3>
-
-      <p>
-        Building the probability profile.
-      </p>
 
     </div>
-
   `;
-
-
-  try {
-
-    const data =
-      await api(
-        "/api/match/" +
-        encodeURIComponent(id)
-      );
-
-    if (!data.match) {
-      throw new Error(
-        "Match not found"
-      );
-    }
-
-    renderMatchModal(
-      data.match
-    );
-
-  } catch (e) {
-
-    content.innerHTML = `
-
-      <div class="error-card">
-
-        <h2>
-          Analysis unavailable
-        </h2>
-
-        <p>
-          ${esc(e.message)}
-        </p>
-
-      </div>
-
-    `;
-
-  }
-
 }
 
+async function openMatch(id){
 
-/* =========================================================
-   RENDER MATCH MODAL
-   ========================================================= */
+  try{
 
-function renderMatchModal(p) {
+    const d=
+      await fetchWithTimeout(
+        '/api/match/'+
+        encodeURIComponent(id),
+        5000
+      );
 
-  const leaderPick =
-    leader(p);
+    if(!d.match)return;
 
-  const confidence =
-    confidenceLabel(
-      p.confidence
-    );
+    const p=d.match;
 
-
-  const probabilityBox =
-    (label, value, primary = false) => `
+    const b=(
+      label,
+      v,
+      primary=false
+    )=>`
 
       <div
         class="prob ${
-          primary ? "primary" : ""
+          primary
+            ?'primary'
+            :''
         }"
       >
 
         <small>
-          ${esc(label)}
+          ${label}
         </small>
 
         <b>
-          ${pct(value)}
+          ${pct(v)}
         </b>
 
         <div class="bar">
+
           <i
-            style="width:${Math.min(
-              100,
-              num(value) * 100
-            )}%"
+            style="width:${v*100}%"
           ></i>
-        </div>
-
-      </div>
-
-    `;
-
-
-  const marketBox =
-    (label, value) => `
-
-      <div class="market-box">
-
-        <div>
-
-          <span>
-            ${esc(label)}
-          </span>
-
-          <small>
-            Probability
-          </small>
 
         </div>
 
-        <strong>
-          ${pct(value)}
-        </strong>
-
       </div>
-
     `;
 
+    document.getElementById(
+      'modalContent'
+    ).innerHTML=`
 
-  document.getElementById(
-    "modalContent"
-  ).innerHTML = `
-
-    <div class="modal-header">
-
-      <div>
+      <div class="modal-title">
 
         <div class="eyebrow">
-          ${esc(p.country || "")}
-          ${p.country ? " · " : ""}
           ${esc(p.league)}
+          ·
+          ${esc(p.kickoff)}
         </div>
 
         <h1>
 
           ${esc(p.home)}
 
-          <span>
+          <span
+            style="color:var(--muted)"
+          >
             vs
           </span>
 
@@ -1603,1068 +835,435 @@ function renderMatchModal(p) {
 
         </h1>
 
-        <p class="modal-kickoff">
+        <p class="muted">
 
-          ${esc(
-            p.kickoff ||
-            formatKickoff(
-              p.providerKickoffUtc
-            )
-          )}
+          Model verdict:
 
-          ·
+          <b class="accent">
+            ${esc(p.verdict)}
+          </b>
 
-          ${esc(
-            statusLabel(
-              p.providerStatus
-            )
-          )}
+          · Confidence
+          ${p.confidence}/100
+
+          · Agreement
+          ${p.modelAgreement}%
 
         </p>
 
       </div>
 
-
-      <div class="modal-confidence">
-
-        <span>
-          MODEL CONFIDENCE
-        </span>
-
-        <strong>
-          ${num(p.confidence)}
-        </strong>
-
-        <small>
-          ${confidence.label}
-        </small>
-
-      </div>
-
-    </div>
-
-
-    <!-- PRIMARY VERDICT -->
-
-    <section class="verdict-banner">
-
-      <div>
-
-        <small>
-          PRIMARY MODEL VERDICT
-        </small>
-
-        <strong>
-          ${esc(p.verdict)}
-        </strong>
-
-        <span>
-          Highest probability outcome
-        </span>
-
-      </div>
-
-
-      <div class="verdict-number">
-        ${pct(leaderPick[1])}
-      </div>
-
-    </section>
-
-
-    <!-- 1X2 -->
-
-    <div class="analysis-section">
-
-      <div class="section-heading">
-
-        <div>
-          <div class="eyebrow">
-            RESULT PROBABILITIES
-          </div>
-
-          <h3>
-            Match outcome
-          </h3>
-        </div>
-
-        <span>
-          Model ${esc(
-            p.modelVersion ||
-            "FI"
-          )}
-        </span>
-
-      </div>
-
-
       <div class="prob-grid">
 
-        ${probabilityBox(
-          "Home Win",
-          p.probabilities?.home,
-          p.verdict ===
-            "Home Win"
+        ${b(
+          'Home Win',
+          p.probabilities.home,
+          p.verdict==='Home Win'
         )}
 
-        ${probabilityBox(
-          "Draw",
-          p.probabilities?.draw,
-          p.verdict ===
-            "Draw"
+        ${b(
+          'Draw',
+          p.probabilities.draw,
+          p.verdict==='Draw'
         )}
 
-        ${probabilityBox(
-          "Away Win",
-          p.probabilities?.away,
-          p.verdict ===
-            "Away Win"
+        ${b(
+          'Away Win',
+          p.probabilities.away,
+          p.verdict==='Away Win'
+        )}
+
+        ${b(
+          'Over 1.5',
+          p.markets.over15
+        )}
+
+        ${b(
+          'Over 2.5',
+          p.markets.over25
+        )}
+
+        ${b(
+          'BTTS Yes',
+          p.markets.btts
         )}
 
       </div>
 
-    </div>
+      <div class="two-col">
 
+        <div class="subcard">
 
-    <!-- EXPECTED GOALS -->
+          <h3>
+            📌 Model verdict
+          </h3>
 
-    <div class="two-col">
+          <p class="big-verdict">
+            ${esc(p.verdict)}
+          </p>
 
-      <div class="subcard">
-
-        <div class="subcard-title">
-          <span class="icon-box">
-            ⚽
-          </span>
-
-          <div>
-            <small>
-              EXPECTED GOALS
-            </small>
-
-            <h3>
-              Goal projection
-            </h3>
-          </div>
-        </div>
-
-
-        <div class="xg-display">
-
-          <div>
-
-            <small>
-              ${esc(p.home)}
-            </small>
-
-            <strong>
-              ${num(
-                p.expectedGoals?.home
-              ).toFixed(2)}
-            </strong>
-
-          </div>
-
-          <span>
+          <p class="muted">
+            Expected goals:
+            <b>
+              ${p.expectedGoals.home.toFixed(2)}
+            </b>
             –
-          </span>
+            <b>
+              ${p.expectedGoals.away.toFixed(2)}
+            </b>
+          </p>
 
-          <div>
+          <p class="muted">
+            Projected total:
+            ${p.expectedGoals.total.toFixed(2)}
+          </p>
 
-            <small>
-              ${esc(p.away)}
-            </small>
-
-            <strong>
-              ${num(
-                p.expectedGoals?.away
-              ).toFixed(2)}
-            </strong>
-
-          </div>
-
-        </div>
-
-
-        <div class="total-xg">
-
-          Projected total
-
-          <b>
-            ${num(
-              p.expectedGoals?.total
-            ).toFixed(2)}
-          </b>
+          <p class="muted">
+            Data quality:
+            ${p.dataQuality}/100
+          </p>
 
         </div>
 
-      </div>
-
-
-      <div class="subcard">
-
-        <div class="subcard-title">
-
-          <span class="icon-box">
-            🎯
-          </span>
-
-          <div>
-            <small>
-              MODEL AGREEMENT
-            </small>
-
-            <h3>
-              Signal strength
-            </h3>
-          </div>
-
-        </div>
-
-
-        <div class="agreement">
-
-          <div class="agreement-circle">
-
-            <strong>
-              ${num(
-                p.modelAgreement
-              )}%
-            </strong>
-
-          </div>
-
-          <div>
-
-            <strong>
-              ${confidence.label}
-            </strong>
-
-            <p>
-              Agreement between the
-              current statistical signals.
-            </p>
-
-          </div>
-
-        </div>
-
-      </div>
-
-    </div>
-
-
-    <!-- BETTING / MARKET PROBABILITIES -->
-
-    <div class="analysis-section">
-
-      <div class="section-heading">
-
-        <div>
-
-          <div class="eyebrow">
-            GOALS & BOTH TEAMS TO SCORE
-          </div>
+        <div class="subcard">
 
           <h3>
-            Market probabilities
+            🎯 Highest-probability markets
           </h3>
+
+          ${p.bestMarkets.map(
+            x=>`
+
+              <div class="pick-row">
+
+                <span>
+                  ${esc(x[0])}
+                </span>
+
+                <b>
+                  ${pct(x[1])}
+                </b>
+
+              </div>
+
+            `
+          ).join('')}
 
         </div>
 
       </div>
 
+      <div class="subcard space">
 
-      <div class="market-grid">
+        <h3>
+          🧠 Why the model leans this way
+        </h3>
 
-        ${marketBox(
-          "Over 0.5 Goals",
-          p.markets?.over05
-        )}
+        ${p.factors.map(
+          x=>`
 
-        ${marketBox(
-          "Over 1.5 Goals",
-          p.markets?.over15
-        )}
+            <div class="factor">
 
-        ${marketBox(
-          "Over 2.5 Goals",
-          p.markets?.over25
-        )}
+              <div class="factor-top">
 
-        ${marketBox(
-          "Over 3.5 Goals",
-          p.markets?.over35
-        )}
+                <b>
+                  ${esc(x.label)}
+                </b>
 
-        ${marketBox(
-          "BTTS — Yes",
-          p.markets?.btts
-        )}
+                <span>
+                  ${Math.round(x.value)}/100
+                </span>
 
-        ${marketBox(
-          "BTTS — No",
-          p.markets?.bttsNo
-        )}
+              </div>
 
-      </div>
+              <div class="meter">
 
-    </div>
+                <i
+                  style="width:${x.value}%"
+                ></i>
 
+              </div>
 
-    <!-- BEST MARKETS -->
+              <small>
+                ${esc(x.note)}
+              </small>
 
-    <div class="subcard space">
+            </div>
 
-      <div class="section-heading">
-
-        <div>
-
-          <div class="eyebrow">
-            MODEL SHORTLIST
-          </div>
-
-          <h3>
-            Highest-probability signals
-          </h3>
-
-        </div>
+          `
+        ).join('')}
 
       </div>
 
+      <div class="subcard space">
 
-      <div class="best-markets">
+        <h3>
+          🔢 Most likely scorelines
+        </h3>
 
-        ${
-          (p.bestMarkets || [])
-            .map(
-              (x, index) => `
+        <div class="score-list">
 
-                <div class="best-market">
+          ${p.topScores.map(
+            s=>`
 
-                  <span class="rank">
-                    ${index + 1}
-                  </span>
+              <div class="score">
 
-                  <div>
-
-                    <strong>
-                      ${esc(x[0])}
-                    </strong>
-
-                    <small>
-                      Current model probability
-                    </small>
-
-                  </div>
-
-                  <b>
-                    ${pct(x[1])}
-                  </b>
-
-                </div>
-
-              `
-            )
-            .join("")
-        }
-
-      </div>
-
-    </div>
-
-
-    <!-- MODEL FACTORS -->
-
-    <div class="subcard space">
-
-      <div class="section-heading">
-
-        <div>
-
-          <div class="eyebrow">
-            EXPLAINABLE AI LAYER
-          </div>
-
-          <h3>
-            Why the model leans this way
-          </h3>
-
-        </div>
-
-      </div>
-
-
-      ${
-        (p.factors || [])
-          .map(
-            factor => `
-
-              <div class="factor">
-
-                <div class="factor-top">
-
-                  <strong>
-                    ${esc(factor.label)}
-                  </strong>
-
-                  <span>
-                    ${Math.round(
-                      factor.value
-                    )}/100
-                  </span>
-
-                </div>
-
-                <div class="factor-bar">
-
-                  <i
-                    style="width:${Math.min(
-                      100,
-                      factor.value
-                    )}%"
-                  ></i>
-
-                </div>
+                <b>
+                  ${s.h}–${s.a}
+                </b>
 
                 <small>
-                  ${esc(factor.note)}
+                  ${pct(s.p)}
                 </small>
 
               </div>
 
             `
-          )
-          .join("")
-      }
+          ).join('')}
 
-    </div>
+        </div>
 
+      </div>
 
-    <!-- SCORELINES -->
+      <p class="warning">
 
-    <div class="subcard space">
+        ⚠️ Probabilities are statistical
+        estimates, not guarantees.
 
-      <div class="section-heading">
+      </p>
+    `;
 
-        <div>
+    document.getElementById(
+      'modal'
+    ).classList.remove(
+      'hidden'
+    );
 
-          <div class="eyebrow">
-            SCORE SIMULATION
+  }catch(e){
+
+    console.error(e);
+
+  }
+}
+
+function closeModal(){
+
+  document.getElementById(
+    'modal'
+  ).classList.add(
+    'hidden'
+  );
+}
+
+function renderPage(page){
+
+  document.querySelectorAll(
+    '.nav'
+  ).forEach(
+    x=>x.classList.remove(
+      'active'
+    )
+  );
+
+  document.querySelector(
+    `.nav[data-page="${page}"]`
+  )?.classList.add(
+    'active'
+  );
+
+  if(page==='dashboard'){
+    renderDashboard();
+    return;
+  }
+
+  if(page==='performance'){
+
+    document.getElementById(
+      'main'
+    ).innerHTML=`
+
+      <div class="page-head">
+
+        <div class="eyebrow">
+          Transparency layer
+        </div>
+
+        <h1>
+          Model performance
+        </h1>
+
+        <p>
+          Performance statistics will be
+          populated from immutable prediction
+          records as historical predictions
+          accumulate.
+        </p>
+
+      </div>
+
+      <div class="stats">
+
+        <div class="stat">
+          <small>
+            1X2 accuracy
+          </small>
+          <b>—</b>
+        </div>
+
+        <div class="stat">
+          <small>
+            Brier score
+          </small>
+          <b>—</b>
+        </div>
+
+        <div class="stat">
+          <small>
+            Log loss
+          </small>
+          <b>—</b>
+        </div>
+
+        <div class="stat">
+          <small>
+            Tracked predictions
+          </small>
+          <b>0</b>
+        </div>
+
+      </div>
+
+      <div class="subcard space">
+
+        <h3>
+          Why these metrics?
+        </h3>
+
+        <p class="muted">
+
+          Accuracy measures hit rate.
+          Brier score and log loss evaluate
+          probability quality.
+
+          Calibration checks whether a 60%
+          forecast actually occurs about 60%
+          of the time.
+
+        </p>
+
+      </div>
+    `;
+
+    return;
+  }
+
+  if(page==='methodology'){
+
+    document.getElementById(
+      'main'
+    ).innerHTML=`
+
+      <div class="page-head">
+
+        <div class="eyebrow">
+          The engine
+        </div>
+
+        <h1>
+          Transparent by design.
+        </h1>
+
+        <p>
+          The Football Intelligence Engine
+          combines statistical modelling,
+          historical data and live football
+          context.
+        </p>
+
+      </div>
+
+      <div class="method-grid">
+
+        <div class="method-card">
+
+          <h3>
+            1. Team strength
+          </h3>
+
+          <p>
+            Elo-style ratings capture
+            persistent differences in
+            team quality.
+          </p>
+
+          <h3>
+            2. Goal model
+          </h3>
+
+          <p>
+            Expected-goal estimates feed
+            a Poisson-style score matrix.
+          </p>
+
+          <h3>
+            3. Context
+          </h3>
+
+          <p>
+            Form, home/away splits,
+            opponent strength, rest,
+            injuries and lineups can
+            become model features.
+          </p>
+
+        </div>
+
+        <div class="method-card">
+
+          <h3>
+            4. Ensemble & calibration
+          </h3>
+
+          <p>
+            Independent models can be
+            combined and calibrated against
+            historical outcomes.
+          </p>
+
+          <div class="formula">
+
+            data → features → models
+            → score matrix → ensemble
+            → calibration → probabilities
+
           </div>
 
           <h3>
-            Most likely scorelines
+            5. Accountability
           </h3>
 
+          <p>
+            Predictions are designed to be
+            recorded before kickoff and
+            graded after the match.
+          </p>
+
         </div>
 
       </div>
-
-
-      <div class="score-list">
-
-        ${
-          (p.topScores || [])
-            .map(
-              s => `
-
-                <div class="score">
-
-                  <strong>
-                    ${s.h} – ${s.a}
-                  </strong>
-
-                  <span>
-                    ${pct(s.p)}
-                  </span>
-
-                </div>
-
-              `
-            )
-            .join("")
-        }
-
-      </div>
-
-    </div>
-
-
-    <!-- DATA QUALITY -->
-
-    <div class="data-quality">
-
-      <div>
-
-        <span>
-          DATA QUALITY
-        </span>
-
-        <strong>
-          ${num(
-            p.dataQuality
-          )}/100
-        </strong>
-
-      </div>
-
-
-      <div class="quality-bar">
-
-        <i
-          style="width:${Math.min(
-            100,
-            num(p.dataQuality)
-          )}%"
-        ></i>
-
-      </div>
-
-
-      ${
-        p.warning
-          ? `
-            <p>
-              ⚠️ ${esc(p.warning)}
-            </p>
-          `
-          : ""
-      }
-
-    </div>
-
-
-    <div class="responsible-note">
-
-      <strong>
-        Statistical forecast
-      </strong>
-
-      <span>
-        Probabilities describe model estimates,
-        not guaranteed outcomes. Football contains
-        substantial uncertainty and variance.
-      </span>
-
-    </div>
-
-  `;
-
-}
-
-
-/* =========================================================
-   CLOSE MODAL
-   ========================================================= */
-
-function closeModal() {
-
-  document
-    .getElementById("modal")
-    .classList.add(
-      "hidden"
-    );
-
-}
-
-
-/* =========================================================
-   ESC KEY
-   ========================================================= */
-
-document.addEventListener(
-  "keydown",
-  e => {
-
-    if (
-      e.key === "Escape"
-    ) {
-      closeModal();
-    }
-
+    `;
   }
+}
+
+document.querySelectorAll(
+  '.nav'
+).forEach(
+  b=>b.addEventListener(
+    'click',
+    ()=>renderPage(
+      b.dataset.page
+    )
+  )
 );
-
-
-/* =========================================================
-   NAVIGATION
-   ========================================================= */
-
-function activateNav(page) {
-
-  document
-    .querySelectorAll(".nav")
-    .forEach(button => {
-
-      button.classList.toggle(
-        "active",
-        button.dataset.page ===
-          page
-      );
-
-    });
-
-}
-
-
-function renderPage(page) {
-
-  currentPage =
-    page;
-
-  activateNav(
-    page
-  );
-
-
-  if (
-    page ===
-    "dashboard"
-  ) {
-
-    renderDashboard();
-
-    return;
-
-  }
-
-
-  if (
-    page ===
-    "performance"
-  ) {
-
-    renderPerformance();
-
-    return;
-
-  }
-
-
-  if (
-    page ===
-    "methodology"
-  ) {
-
-    renderMethodology();
-
-    return;
-
-  }
-
-}
-
-
-/* =========================================================
-   PERFORMANCE PAGE
-   ========================================================= */
-
-function renderPerformance() {
-
-  document.getElementById(
-    "main"
-  ).innerHTML = `
-
-    <div class="page-head">
-
-      <div class="eyebrow">
-        TRANSPARENCY LAYER
-      </div>
-
-      <h1>
-        Model performance
-      </h1>
-
-      <p>
-        The intelligence engine is being built with
-        a permanent prediction ledger so forecasts can
-        eventually be measured against actual outcomes.
-      </p>
-
-    </div>
-
-
-    <div class="stats">
-
-      <div class="stat">
-
-        <small>
-          1X2 accuracy
-        </small>
-
-        <b>—</b>
-
-        <span>
-          Awaiting graded predictions
-        </span>
-
-      </div>
-
-
-      <div class="stat">
-
-        <small>
-          Brier score
-        </small>
-
-        <b>—</b>
-
-        <span>
-          Probability quality
-        </span>
-
-      </div>
-
-
-      <div class="stat">
-
-        <small>
-          Log loss
-        </small>
-
-        <b>—</b>
-
-        <span>
-          Forecast sharpness
-        </span>
-
-      </div>
-
-
-      <div class="stat">
-
-        <small>
-          Tracked predictions
-        </small>
-
-        <b>0</b>
-
-        <span>
-          Prediction ledger
-        </span>
-
-      </div>
-
-    </div>
-
-
-    <div class="method-grid">
-
-      <div class="method-card">
-
-        <div class="eyebrow">
-          CALIBRATION
-        </div>
-
-        <h2>
-          Accuracy isn't enough.
-        </h2>
-
-        <p>
-          A serious prediction system must evaluate
-          whether its probabilities are reliable,
-          not merely whether the most likely outcome
-          happened.
-        </p>
-
-        <div class="metric-explanation">
-
-          <div>
-            <strong>
-              Brier Score
-            </strong>
-
-            <span>
-              Measures the quality of probabilistic
-              forecasts.
-            </span>
-          </div>
-
-          <div>
-            <strong>
-              Log Loss
-            </strong>
-
-            <span>
-              Penalizes confident incorrect predictions.
-            </span>
-          </div>
-
-          <div>
-            <strong>
-              Calibration
-            </strong>
-
-            <span>
-              Checks whether 70% predictions happen
-              approximately 70% of the time.
-            </span>
-          </div>
-
-        </div>
-
-      </div>
-
-
-      <div class="method-card">
-
-        <div class="eyebrow">
-          ACCOUNTABILITY
-        </div>
-
-        <h2>
-          Every prediction should be testable.
-        </h2>
-
-        <p>
-          The next stages of the engine will permanently
-          record predictions before kickoff and grade
-          them after the match.
-        </p>
-
-        <div class="formula">
-          prediction → kickoff → result → grading → calibration
-        </div>
-
-      </div>
-
-    </div>
-
-  `;
-
-}
-
-
-/* =========================================================
-   METHODOLOGY PAGE
-   ========================================================= */
-
-function renderMethodology() {
-
-  document.getElementById(
-    "main"
-  ).innerHTML = `
-
-    <div class="page-head">
-
-      <div class="eyebrow">
-        THE ENGINE
-      </div>
-
-      <h1>
-        Transparent by design.
-      </h1>
-
-      <p>
-        Football Intelligence is designed around
-        probabilities rather than exaggerated certainty.
-        Each forecast is generated from multiple statistical
-        signals that can be independently evaluated.
-      </p>
-
-    </div>
-
-
-    <div class="method-grid">
-
-      <div class="method-card">
-
-        <div class="method-number">
-          01
-        </div>
-
-        <h2>
-          Team strength
-        </h2>
-
-        <p>
-          Team ratings provide a persistent measure of
-          relative football strength. Over time these
-          ratings can incorporate results, opponent quality
-          and home/away performance.
-        </p>
-
-      </div>
-
-
-      <div class="method-card">
-
-        <div class="method-number">
-          02
-        </div>
-
-        <h2>
-          Goal modelling
-        </h2>
-
-        <p>
-          Expected-goal estimates feed a probability
-          distribution of possible scorelines. From this
-          distribution the engine derives match results,
-          totals, BTTS and correct-score probabilities.
-        </p>
-
-      </div>
-
-
-      <div class="method-card">
-
-        <div class="method-number">
-          03
-        </div>
-
-        <h2>
-          Match context
-        </h2>
-
-        <p>
-          The architecture is designed to incorporate
-          recent form, home/away splits, injuries,
-          projected lineups, rest, fixture congestion,
-          opponent strength and other contextual variables.
-        </p>
-
-      </div>
-
-
-      <div class="method-card">
-
-        <div class="method-number">
-          04
-        </div>
-
-        <h2>
-          Ensemble modelling
-        </h2>
-
-        <p>
-          Multiple independent signals can be combined
-          into a single calibrated forecast rather than
-          allowing one statistic to dominate the prediction.
-        </p>
-
-        <div class="formula">
-          data → features → models → score matrix → ensemble → calibration
-        </div>
-
-      </div>
-
-
-      <div class="method-card">
-
-        <div class="method-number">
-          05
-        </div>
-
-        <h2>
-          Walk-forward validation
-        </h2>
-
-        <p>
-          Historical evaluation must respect time. The
-          model should only use information that would
-          genuinely have been available before each match,
-          preventing future-information leakage.
-        </p>
-
-      </div>
-
-
-      <div class="method-card">
-
-        <div class="method-number">
-          06
-        </div>
-
-        <h2>
-          Prediction accountability
-        </h2>
-
-        <p>
-          Predictions should be stored before kickoff,
-          then compared with actual results. This creates
-          a genuine performance record instead of allowing
-          forecasts to be rewritten after the fact.
-        </p>
-
-      </div>
-
-    </div>
-
-  `;
-
-}
-
-
-/* =========================================================
-   ERROR PAGE
-   ========================================================= */
-
-function renderError(e) {
-
-  document.getElementById(
-    "main"
-  ).innerHTML = `
-
-    <div class="error-card">
-
-      <div class="error-icon">
-        ⚠️
-      </div>
-
-      <h2>
-        Engine connection problem
-      </h2>
-
-      <p>
-        The dashboard could not retrieve prediction data.
-        Check that the Cloudflare Worker and database
-        connection are online.
-      </p>
-
-      <small>
-        ${esc(e?.message || "Unknown error")}
-      </small>
-
-      <button
-        class="refresh-btn"
-        onclick="load()"
-      >
-        Try again
-      </button>
-
-    </div>
-
-  `;
-
-}
-
-
-/* =========================================================
-   NAV EVENTS
-   ========================================================= */
-
-document
-  .querySelectorAll(".nav")
-  .forEach(button => {
-
-    button.addEventListener(
-      "click",
-      () => {
-
-        renderPage(
-          button.dataset.page
-        );
-
-      }
-    );
-
-  });
-
-
-/* =========================================================
-   START
-   ========================================================= */
 
 load();
